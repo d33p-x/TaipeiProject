@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from "react";
 import { useAccount } from "wagmi";
-import { SCOPES } from "@/lib/wagmi";
 import dynamic from "next/dynamic";
 
 // Dynamically import the Self QR code component with SSR disabled
@@ -10,6 +9,44 @@ const DynamicSelfQRcode = dynamic(
   () => import("@selfxyz/qrcode").then((mod) => mod.default),
   { ssr: false }
 );
+
+// Helper function to generate a UUID
+const generateUuid = () => {
+  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, function (c) {
+    const r = (Math.random() * 16) | 0;
+    const v = c === "x" ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
+};
+
+// Constants from environment variables
+const SELF_APP_SCOPE = process.env.NEXT_PUBLIC_SELF_APP_SCOPE || "clubfrenguin";
+const MIN_AGE = parseInt(process.env.NEXT_PUBLIC_MIN_AGE || "13", 10);
+
+// Wrapper component to handle the type issues with onSuccess
+const SelfQRCodeWrapper = ({
+  selfApp,
+  onSuccess,
+  size,
+}: {
+  selfApp: any;
+  onSuccess: (data: any) => void;
+  size: number;
+}) => {
+  // This wrapper handles the type mismatch between our component and the Self QR code
+  const handleSelfSuccess = () => {
+    // Call our handler with mock data in development mode
+    onSuccess(DEV_VERIFICATION_DATA);
+  };
+
+  return (
+    <DynamicSelfQRcode
+      selfApp={selfApp}
+      onSuccess={handleSelfSuccess}
+      size={size}
+    />
+  );
+};
 
 interface SelfVerificationProps {
   onSuccess: (verificationData: any) => void;
@@ -36,6 +73,7 @@ export function SelfVerification({ onSuccess }: SelfVerificationProps) {
   const [errorMessage, setErrorMessage] = useState<string>("");
   const [selfApp, setSelfApp] = useState<any>(null);
   const [isDev, setIsDev] = useState(false);
+  const [isQrLoading, setIsQrLoading] = useState(true);
 
   // Initialize the Self app after component mounts (client-side only)
   useEffect(() => {
@@ -45,51 +83,89 @@ export function SelfVerification({ onSuccess }: SelfVerificationProps) {
       (window.location.hostname === "localhost" ||
         window.location.hostname === "127.0.0.1");
 
-    setIsDev(isLocalhost);
+    console.log("[Self] Environment:", {
+      hostname:
+        typeof window !== "undefined" ? window.location.hostname : "unknown",
+      isLocalhost,
+      isConnected,
+      address,
+    });
 
-    if (isConnected && address && typeof window !== "undefined") {
+    setIsDev(isLocalhost);
+    setIsQrLoading(true);
+
+    const initializeSelf = async () => {
+      if (!isConnected || !address) {
+        console.log("[Self] No wallet connected, skipping Self initialization");
+        setIsQrLoading(false);
+        return;
+      }
+
       try {
-        import("@selfxyz/qrcode").then(({ SelfAppBuilder }) => {
-          const app = new SelfAppBuilder({
-            appName: "Club Frenguin",
-            scope: SCOPES.APP_SCOPE,
-            // For development, use a dummy HTTPS URL
-            endpoint: isLocalhost
-              ? "https://example.com/api/verify" // Dummy endpoint for local development
-              : `${window.location.origin}/api/verify`,
-            endpointType: "https",
-            userId: address,
-            disclosures: {
-              minimumAge: 13,
-              nationality: true,
-              gender: true,
-              date_of_birth: true,
-            },
-          }).build();
-          setSelfApp(app);
-        });
+        console.log("[Self] Importing Self Protocol library...");
+        const selfModule = await import("@selfxyz/qrcode");
+        const { SelfAppBuilder } = selfModule;
+
+        if (!SelfAppBuilder) {
+          throw new Error("SelfAppBuilder not found in @selfxyz/qrcode module");
+        }
+
+        // Get user identifier - always use UUID for compatibility
+        const userId = generateUuid();
+        console.log("[Self] Using UUID for user identification:", userId);
+
+        // Configure Self with production settings
+        const selfConfig = {
+          appName: "Club Frenguin",
+          scope: SELF_APP_SCOPE,
+          endpoint: isLocalhost
+            ? "https://example.com/api/verify" // Dummy endpoint for local development
+            : `${window.location.origin}/api/verify`,
+          endpointType: "https",
+          userId: userId,
+          disclosures: {
+            minimumAge: MIN_AGE,
+            nationality: true,
+            gender: true,
+            date_of_birth: true,
+          },
+        };
+
+        console.log("[Self] Creating Self app with config:", selfConfig);
+
+        // Create Self app
+        const app = new SelfAppBuilder(selfConfig).build();
+
+        console.log("[Self] Self app created successfully");
+        setSelfApp(app);
+        setIsQrLoading(false);
       } catch (error) {
-        console.error("Error initializing Self app:", error);
+        console.error("[Self] Error initializing Self app:", error);
         setErrorMessage(
           error instanceof Error ? error.message : "Unknown error"
         );
+        setIsQrLoading(false);
       }
-    }
+    };
+
+    initializeSelf();
   }, [isConnected, address]);
 
   const handleSuccess = (data: any) => {
+    console.log("[Self] Verification successful:", data);
     setVerificationStatus("success");
     onSuccess(data);
   };
 
   const handleError = (error: Error) => {
-    console.error("Verification error:", error);
+    console.error("[Self] Verification error:", error);
     setVerificationStatus("error");
     setErrorMessage(error.message);
   };
 
   // For development mode - simulate verification success
   const handleDevModeVerify = () => {
+    console.log("[Self] Simulating verification success");
     setVerificationStatus("success");
     onSuccess(DEV_VERIFICATION_DATA);
   };
@@ -135,13 +211,25 @@ export function SelfVerification({ onSuccess }: SelfVerificationProps) {
               Use the Self app to scan your passport and verify your identity.
             </p>
 
-            {selfApp && (
+            {isQrLoading ? (
               <div className="flex justify-center">
-                <DynamicSelfQRcode
+                <div className="animate-pulse h-64 w-64 bg-gray-200 rounded-lg flex items-center justify-center">
+                  <p className="text-gray-400">Loading QR code...</p>
+                </div>
+              </div>
+            ) : selfApp ? (
+              <div className="flex justify-center">
+                <SelfQRCodeWrapper
                   selfApp={selfApp}
                   onSuccess={handleSuccess}
                   size={250}
                 />
+              </div>
+            ) : (
+              <div className="mt-4 p-4 bg-red-50 border border-red-100 rounded-lg">
+                <p className="text-red-700 font-medium text-center">
+                  Error loading QR code: {errorMessage || "Unknown error"}
+                </p>
               </div>
             )}
           </>

@@ -4,7 +4,10 @@ import {
   SelfBackendVerifier,
   countryCodes,
 } from "@selfxyz/core";
-import { SCOPES } from "@/lib/wagmi";
+
+// Constants from environment variables
+const SELF_APP_SCOPE = process.env.NEXT_PUBLIC_SELF_APP_SCOPE || "clubfrenguin";
+const MIN_AGE = parseInt(process.env.NEXT_PUBLIC_MIN_AGE || "13", 10);
 
 export async function POST(req: NextRequest) {
   try {
@@ -24,12 +27,12 @@ export async function POST(req: NextRequest) {
     // Initialize and configure the verifier
     const selfBackendVerifier = new SelfBackendVerifier(
       "https://forno.celo.org", // Celo RPC url
-      SCOPES.APP_SCOPE, // Must match the frontend scope
+      SELF_APP_SCOPE, // Must match the frontend scope
       `${process.env.NEXT_PUBLIC_APP_URL || req.nextUrl.origin}/api/verify` // This API endpoint URL
     );
 
     // Set minimum age verification (minimum age in the app is 13)
-    selfBackendVerifier.setMinimumAge(13);
+    selfBackendVerifier.setMinimumAge(MIN_AGE);
 
     // Verify the proof
     const result = await selfBackendVerifier.verify(proof, publicSignals);

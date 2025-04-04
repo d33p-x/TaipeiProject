@@ -34,6 +34,7 @@ export const config = createConfig({
   webSocketPublicClient,
 });
 
+// Export constants used by both client and server components
 export const SCOPES = {
   APP_SCOPE: "clubfrenguin", // Must match the scope used in the contract
 };
