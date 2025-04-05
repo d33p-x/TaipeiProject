@@ -1,4 +1,4 @@
-Registry set
+
 logo
 
 
@@ -19,7 +19,7 @@ The L2 registry tracks ownership of ENS subdomains. These names are represented 
 Choose an ENS Name
 Sepolia
 Mainnet
-frenguin.eth
+Search your ENS names
 chevron
 Choose a Chain
 Testnet
@@ -31,17 +31,16 @@ Base Sepolia
 chevron
 Deploy L2 Registry on Base Sepolia
 This will use your connected wallet to deploy the L2 Registry.
-Deployed!
+Deploy
 Registry Address:
-0xf1797dc04644499dc593878e1e9e7b80a059a70b
-etherscan
+Waiting for Deploy...
 2. Configure L1 Resolver
 Key Contract:
 L1 Resolver
 The L1 Resolver functions as an entry point to provide information about a name. Users can query name resolution (bob.example.eth → 0x542) and associated text records.
 
 The provided resolver is made to work with Durin's contracts. As the owner of the ENS name, you are able to revert any of these changes.
-Change Resolver for frenguin.eth on Sepolia
+Change Resolver for frenguin.eth on Mainnet
 Updating the resolver connects your ENS name to the deployed L2 registry.
 Resolver up to date ✓
 Resolver Address:
@@ -58,8 +57,7 @@ Customize and Deploy L2 Registrar
 Select a template L2 registrar and modify it as needed. You will need your registry address.
 githubCustomize
 Registry Address:
-0xf1797dc04644499dc593878e1e9e7b80a059a70b
-etherscan
+Waiting for Deploy...
 4. Connect Registrar to Registry
 L2 Registrar <> L2 Registry
 This step grants permission to your registrar contract to mint subdomains through your registry. Calling addRegistrar() on the registry connects the two contracts together.
@@ -74,11 +72,6 @@ Search for your registrar address on the appropriate L2 Etherscan.
 Under Contract select register() and write.etherscan
 Transaction History
 ?
-Set Registry
-0x6659a7550478f4e2e6034816c18851839119550b4bf1a2bbeba1741a7394afe7
-Updated Resolver
-0x4f37baf6808a1d6702d8571f2a62fbb4b26f280a1cbb781f2ec0746ebbeecf4c
-Deployed Registry
-0xdf8f845567dd59fea27656c82dece4df433a559a8274bc62d122b75e5acc93bf
+No transactions yet
 Built By NameStone |
 Logo

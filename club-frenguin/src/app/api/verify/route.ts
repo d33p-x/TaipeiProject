@@ -26,22 +26,11 @@ export async function POST(req: NextRequest) {
     // Set minimum age to 18
     configuredVerifier.setMinimumAge(18);
 
-    // Note: We're requesting gender in the QR code via disclosures
-
     // Verify the proof
     const result = await configuredVerifier.verify(proof, publicSignals);
     console.log("Verification result:", result);
 
     if (result.isValid) {
-      // Extract gender from the credential subject if available
-      let gender = "Not specified";
-
-      // The gender is available in the credentialSubject field
-      if (result.credentialSubject && result.credentialSubject.gender) {
-        gender = result.credentialSubject.gender;
-        console.log("Extracted gender from verification result:", gender);
-      }
-
       // Store the verification result
       try {
         await fetch(
@@ -57,7 +46,6 @@ export async function POST(req: NextRequest) {
             body: JSON.stringify({
               id: userId,
               verified: true,
-              gender: gender,
             }),
           }
         );
@@ -70,7 +58,6 @@ export async function POST(req: NextRequest) {
         result: result.isValid,
         // Send back verification status only
         ageVerified: true,
-        gender: gender,
       });
     } else {
       return NextResponse.json(

@@ -3,6 +3,9 @@
 :root {
   --background: #ffffff;
   --foreground: #171717;
+  --foreground-rgb: 0, 0, 0;
+  --background-start-rgb: 214, 219, 220;
+  --background-end-rgb: 255, 255, 255;
 }
 
 @theme inline {
@@ -16,6 +19,9 @@
   :root {
     --background: #0a0a0a;
     --foreground: #ededed;
+    --foreground-rgb: 255, 255, 255;
+    --background-start-rgb: 0, 0, 0;
+    --background-end-rgb: 0, 0, 0;
   }
 }
 
@@ -29,8 +35,13 @@ body {
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
+  background: linear-gradient(
+      to bottom,
+      transparent,
+      rgb(var(--background-end-rgb))
+    )
+    rgb(var(--background-start-rgb));
+  color: rgb(var(--foreground-rgb));
   font-family: Arial, Helvetica, sans-serif;
   position: fixed;
 }
@@ -40,4 +51,22 @@ main {
   height: 100%;
   width: 100%;
   overflow: hidden;
+}
+
+@layer base {
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6,
+  button,
+  .pixel-font {
+    font-family: var(--font-pixelify);
+  }
+
+  .chat-message,
+  .chat-input {
+    font-family: var(--font-inter);
+  }
 }

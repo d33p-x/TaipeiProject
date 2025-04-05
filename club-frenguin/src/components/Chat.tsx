@@ -40,12 +40,30 @@ const initialMockMessages = {
       message: "This is where all the cool adults hang out.",
     },
   ],
+  "kids-only": [
+    {
+      id: 1,
+      sender: "Club Bot",
+      message: "Welcome to the Kids Only room!",
+    },
+    {
+      id: 2,
+      sender: "0xffff...0000",
+      message: "No adults allowed in here, this is our space!",
+    },
+    {
+      id: 3,
+      sender: "0xabcd...kidz",
+      message: "Anyone want to play a game?",
+    },
+  ],
 };
 
 // Store messages outside component to persist across room changes
 const roomMessages: Record<string, ChatMessage[]> = {
   general: [...initialMockMessages.general],
   "adults-only": [...initialMockMessages["adults-only"]],
+  "kids-only": [...initialMockMessages["kids-only"]],
 };
 
 export default function Chat({ room }: ChatProps) {
@@ -116,7 +134,7 @@ export default function Chat({ room }: ChatProps) {
     <div className="chat-container">
       {/* WoW-style chat log in bottom left */}
       <div className="bg-black bg-opacity-60 rounded-md p-2 max-w-xs text-white text-xs h-32 overflow-y-auto flex flex-col">
-        <div className="flex-1 overflow-y-auto scrollbar-thin">
+        <div className="flex-1 overflow-y-auto scrollbar-thin chat-message">
           {messages.map((msg) => (
             <div key={msg.id} className="mb-1">
               <span
@@ -139,12 +157,18 @@ export default function Chat({ room }: ChatProps) {
             type="text"
             value={newMessage}
             onChange={(e) => setNewMessage(e.target.value)}
+            onKeyDown={(e) => {
+              // Prevent space key from triggering any game controls
+              if (e.key === " ") {
+                e.stopPropagation();
+              }
+            }}
             placeholder="Type a message..."
-            className="flex-1 bg-gray-800 text-white text-xs px-2 py-1 rounded-l outline-none"
+            className="flex-1 bg-gray-800 text-white text-xs px-2 py-1 rounded-l outline-none chat-input"
           />
           <button
             type="submit"
-            className="bg-blue-600 text-white text-xs rounded-r px-2"
+            className="bg-blue-600 text-white text-xs rounded-r px-2 font-pixel"
           >
             Send
           </button>
