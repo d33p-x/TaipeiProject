@@ -17,21 +17,32 @@ type GameScene = Phaser.Scene & {
   address?: string;
   isAdult?: boolean | null;
   currentRoom?: string;
-  generalRoom?: Phaser.GameObjects.Rectangle;
-  adultRoom?: Phaser.GameObjects.Rectangle;
+  generalRoom?: Phaser.GameObjects.Container;
+  adultRoom?: Phaser.GameObjects.Container;
   generalObjects?: Phaser.GameObjects.Components.Visible[];
   adultObjects?: Phaser.GameObjects.Components.Visible[];
 };
 
 export default function GameWorld() {
   const gameRef = useRef<HTMLDivElement>(null);
+  const gameInstanceRef = useRef<Phaser.Game | null>(null);
   const { address } = useAccount();
   const { isAdult } = useAgeVerification();
-  const [gameInstance, setGameInstance] = useState<Phaser.Game | null>(null);
   const [currentRoom, setCurrentRoom] = useState<string>("general");
 
   useEffect(() => {
+    // Clear the container before creating a new game instance to prevent doubling
+    if (gameRef.current) {
+      gameRef.current.innerHTML = "";
+    }
+
     if (!gameRef.current || !address) return;
+
+    // Cleanup previous game instance if exists
+    if (gameInstanceRef.current) {
+      gameInstanceRef.current.destroy(true);
+      gameInstanceRef.current = null;
+    }
 
     // Only load Phaser when we're in the browser
     const loadPhaser = async () => {
@@ -62,6 +73,10 @@ export default function GameWorld() {
             scene.generalObjects = [];
             scene.adultObjects = [];
 
+            // Set up camera
+            this.cameras.main.setBackgroundColor("#000000");
+            this.cameras.main.setBounds(0, 0, 800, 600);
+
             // Create world container for each room
             const generalWorld = this.add.container(0, 0);
             const adultWorld = this.add.container(0, 0);
@@ -70,16 +85,14 @@ export default function GameWorld() {
             adultWorld.setVisible(false);
 
             // General room (visible by default)
-            // We won't use a black rectangle as the background anymore
-
-            // Add general room background and objects
+            // Add general room background
             const generalBackground = this.add
               .image(400, 300, "grass")
               .setDisplaySize(800, 600);
             generalWorld.add(generalBackground);
             scene.generalObjects.push(generalBackground);
 
-            // Add room label
+            // Add room label (only one)
             const generalRoomLabel = this.add
               .text(400, 50, "General Room", {
                 fontFamily: "Arial",
@@ -150,8 +163,8 @@ export default function GameWorld() {
             scene.adultObjects.push(backText);
 
             // Store world containers for reference
-            scene.generalRoom = generalWorld as any;
-            scene.adultRoom = adultWorld as any;
+            scene.generalRoom = generalWorld;
+            scene.adultRoom = adultWorld;
 
             // Add player
             scene.playerSprite = this.add.sprite(400, 300, "player");
@@ -176,11 +189,6 @@ export default function GameWorld() {
 
             // Setup keyboard input
             scene.cursors = this.input.keyboard?.createCursorKeys();
-
-            // Set camera to follow player
-            if (scene.playerSprite) {
-              this.cameras.main.startFollow(scene.playerSprite, true, 0.5, 0.5);
-            }
 
             // Door interactions
             adultRoomDoor.on("pointerup", () => {
@@ -285,35 +293,49 @@ export default function GameWorld() {
           }
         }
 
-        // Initialize the game if it doesn't exist
-        if (!gameInstance) {
-          const config: Phaser.Types.Core.GameConfig = {
-            type: Phaser.AUTO,
-            width: 800,
-            height: 600,
-            parent: gameRef.current,
-            scene: [MainScene],
-            physics: {
-              default: "arcade",
-              arcade: {
-                gravity: { x: 0, y: 0 },
-                debug: false,
-              },
+        // Initialize the game
+        const config: Phaser.Types.Core.GameConfig = {
+          type: Phaser.AUTO,
+          width: 800,
+          height: 600,
+          parent: gameRef.current,
+          scene: [MainScene],
+          physics: {
+            default: "arcade",
+            arcade: {
+              gravity: { x: 0, y: 0 },
+              debug: false,
             },
-          };
+          },
+          scale: {
+            mode: Phaser.Scale.FIT,
+            autoCenter: Phaser.Scale.CENTER_BOTH,
+          },
+          backgroundColor: "#000000",
+          // Disable Canvas scrolling
+          disableContextMenu: true,
+          render: {
+            pixelArt: false,
+            antialias: true,
+            antialiasGL: true,
+          },
+        };
 
-          const game = new Phaser.Game(config);
-          setGameInstance(game);
-
-          return () => {
-            game.destroy(true);
-          };
-        }
+        const game = new Phaser.Game(config);
+        gameInstanceRef.current = game;
       }
     };
 
     loadPhaser();
-  }, [address, isAdult, gameInstance]);
+
+    // Make sure to clean up the game instance when component unmounts
+    return () => {
+      if (gameInstanceRef.current) {
+        gameInstanceRef.current.destroy(true);
+        gameInstanceRef.current = null;
+      }
+    };
+  }, [address, isAdult]);
 
   if (!address) {
     return <div>Please connect your wallet to play</div>;
@@ -321,7 +343,12 @@ export default function GameWorld() {
 
   return (
     <div className="relative">
-      <div ref={gameRef} className="rounded-lg overflow-hidden shadow-lg" />
+      {/* Add fixed height and prevent overflow */}
+      <div
+        ref={gameRef}
+        className="rounded-lg overflow-hidden shadow-lg"
+        style={{ height: "600px", maxHeight: "600px" }}
+      />
       <div className="absolute bottom-2 left-2 bg-black bg-opacity-70 text-white px-3 py-1 rounded-full text-sm">
         Room: {currentRoom === "general" ? "General Chat" : "Adults Only (18+)"}
       </div>
