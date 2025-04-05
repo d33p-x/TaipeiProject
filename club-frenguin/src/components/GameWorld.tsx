@@ -8,6 +8,7 @@ import {
 } from "@/providers/AgeVerificationProvider";
 import { SpeechBubble } from "./Chat";
 import { ethers } from "ethers";
+import { v4 as uuidv4 } from "uuid";
 
 // Define game types
 type GameScene = Phaser.Scene & {
@@ -56,6 +57,17 @@ type SpeechBubbleMessage = {
   timestamp: number;
 };
 
+// Add this utility function at the top of the file outside of the component
+// This will help generate a more stable and unique ID
+function generateStablePlayerId(address: string, fallback: string): string {
+  // If we have an address, use it to create a more stable ID tied to the wallet
+  if (address) {
+    return `player_${address.toLowerCase()}`;
+  }
+  // Otherwise use the fallback (UUID)
+  return fallback;
+}
+
 export default function GameWorld() {
   const gameRef = useRef<HTMLDivElement>(null);
   const gameInstanceRef = useRef<Phaser.Game | null>(null);
@@ -82,6 +94,360 @@ export default function GameWorld() {
   // Contract addresses
   const registryAddress = "0x257ed5b68c2a32273db8490e744028a63acc771f";
   const registrarAddress = "0x38Fc7Af48B92F00AB5508d88648FF9a4C9D89b5E";
+
+  // Add state for other players
+  const [otherPlayers, setOtherPlayers] = useState<
+    Array<{
+      id: string;
+      position: { x: number; y: number };
+      character: string;
+      room: string;
+      messages: Array<{ text: string; timestamp: number }>;
+    }>
+  >([]);
+
+  // Reference to store the polling interval
+  const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Improve the player ID generation to be more stable and wallet-based
+  const [playerId] = useState<string>(() => {
+    // Generate a persistent ID based on wallet address or use UUID if no wallet connected
+    const uuid =
+      typeof window !== "undefined" ? localStorage.getItem("player_id") : null;
+    const fallbackId = uuid || uuidv4();
+
+    if (typeof window !== "undefined" && !localStorage.getItem("player_id")) {
+      localStorage.setItem("player_id", fallbackId);
+    }
+
+    // When address is available, use it to generate a more stable ID
+    return address ? generateStablePlayerId(address, fallbackId) : fallbackId;
+  });
+
+  // Update playerId when address changes
+  useEffect(() => {
+    if (address) {
+      const walletBasedId = generateStablePlayerId(address, playerId);
+      // Only update if it's different to avoid unnecessary re-renders
+      if (walletBasedId !== playerId && gameInstanceRef.current) {
+        console.log(`Updating player ID from ${playerId} to ${walletBasedId}`);
+        // We could force an update here but it's better to avoid since it may cause disruption
+        // Instead we'll let the next polling cycle handle it
+      }
+    }
+  }, [address, playerId]);
+
+  // Add status indicator for multiplayer
+  const [multiplayerStatus, setMultiplayerStatus] = useState<
+    "connecting" | "connected" | "disconnected" | "reconnecting"
+  >("connecting");
+
+  // Add a counter for connection attempts and last successful connection timestamp
+  const connectionAttemptsRef = useRef(0);
+  const lastSuccessfulConnectionRef = useRef<number | null>(null);
+
+  // Add multiplayer polling logic
+  useEffect(() => {
+    if (!playerId) return;
+
+    setMultiplayerStatus("connecting");
+    connectionAttemptsRef.current = 0;
+
+    // Function to fetch other players' data
+    const fetchOtherPlayers = async () => {
+      try {
+        connectionAttemptsRef.current++;
+
+        // Only show reconnecting status after a few failed attempts
+        if (
+          connectionAttemptsRef.current > 3 &&
+          lastSuccessfulConnectionRef.current
+        ) {
+          setMultiplayerStatus("reconnecting");
+        }
+
+        // Get the player position from the game if available
+        let playerPosition = { x: 400, y: 300 }; // Default position
+
+        // Ensure consistent room mapping between client and server
+        // This should match exactly what the server expects
+        let currentGameRoom = currentRoom;
+
+        // Map UI room names to server room names if needed
+        if (currentRoom === "adults-only") currentGameRoom = "adult";
+        else if (currentRoom === "kids-only") currentGameRoom = "kids";
+        else currentGameRoom = "general";
+
+        if (gameInstanceRef.current) {
+          const scene = gameInstanceRef.current.scene.getScene(
+            "MainScene"
+          ) as GameScene;
+          if (scene && scene.playerSprite) {
+            playerPosition = {
+              x: scene.playerSprite.x,
+              y: scene.playerSprite.y,
+            };
+          }
+        }
+
+        // Update our position and room on the server
+        const updateResponse = await fetch("/api/socket", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            userId: playerId,
+            position: playerPosition,
+            room: currentGameRoom,
+            character: selectedCharacter || "playerMale",
+          }),
+        });
+
+        const updateData = await updateResponse.json();
+        console.log("Update response:", updateData);
+
+        // Set connected status as we successfully talked to the server
+        setMultiplayerStatus("connected");
+        lastSuccessfulConnectionRef.current = Date.now();
+        connectionAttemptsRef.current = 0;
+
+        // Get other players from the server - use the same room name format
+        const response = await fetch(
+          `/api/socket?userId=${playerId}&room=${currentGameRoom}`
+        );
+
+        // Debug information
+        console.log(
+          `Fetching players in room: ${currentGameRoom} (UI room: ${currentRoom}`
+        );
+        console.log(`My player ID: ${playerId}`);
+
+        const data = await response.json();
+        console.log("Other players data:", data);
+
+        // Check server debug information
+        if (data.debug) {
+          console.log(
+            `Server reports ${data.debug.totalUsers} total users connected`
+          );
+          console.log(
+            `Users in current room: ${data.debug.usersInRequestedRoom}`
+          );
+          if (data.debug.allUsers?.length > 0) {
+            console.log("All connected users:", data.debug.allUsers);
+          }
+        }
+
+        if (data.users) {
+          // Update state with other players
+          setOtherPlayers(data.users);
+
+          // Update other players in the game if it's available
+          if (gameInstanceRef.current) {
+            const scene = gameInstanceRef.current.scene.getScene(
+              "MainScene"
+            ) as GameScene;
+            if (scene && scene.otherPlayers && Array.isArray(data.users)) {
+              // Clear old players first - only if we have newer data
+              if (scene.otherPlayers.size > 0) {
+                console.log(
+                  `Clearing ${scene.otherPlayers.size} old player sprites`
+                );
+                scene.otherPlayers.forEach((player, id) => {
+                  player.sprite.destroy();
+                  player.label.destroy();
+                });
+                scene.otherPlayers.clear();
+              }
+
+              // Debug the number of other players
+              console.log(
+                `Found ${data.users.length} other players in the room`
+              );
+
+              // Add new players
+              data.users.forEach((user: any) => {
+                // Make sure we're comparing the same room format
+                const userIsInSameRoom = user.room === currentGameRoom;
+
+                if (user.id !== playerId && userIsInSameRoom) {
+                  console.log(
+                    `Adding other player: ${user.id.substring(
+                      0,
+                      8
+                    )} at position (${user.position.x}, ${user.position.y})`
+                  );
+
+                  // Create sprite for the other player
+                  const otherSprite = scene.add.sprite(
+                    user.position.x,
+                    user.position.y,
+                    user.character || "playerMale"
+                  );
+
+                  // Create label for the other player
+                  const otherLabel = scene.add
+                    .text(
+                      user.position.x,
+                      user.position.y + 40,
+                      user.id.substring(0, 8),
+                      {
+                        fontFamily: "Pixelify Sans",
+                        fontSize: "14px",
+                        color: "#FFFFFF",
+                        padding: { x: 3, y: 2 },
+                        stroke: "#000000",
+                        strokeThickness: 3,
+                      }
+                    )
+                    .setOrigin(0.5);
+
+                  // Add to the otherPlayers map
+                  scene.otherPlayers?.set(user.id, {
+                    sprite: otherSprite,
+                    label: otherLabel,
+                  });
+
+                  // Display speech bubble if there are recent messages
+                  if (user.messages && user.messages.length > 0) {
+                    const latestMessage =
+                      user.messages[user.messages.length - 1];
+
+                    // Only show messages less than 5 seconds old
+                    if (Date.now() - latestMessage.timestamp < 5000) {
+                      // First remove any existing speech bubbles for this player
+                      scene.children.list.forEach((child) => {
+                        if (
+                          child instanceof Phaser.GameObjects.Container &&
+                          child.name === `speechBubble_${user.id}`
+                        ) {
+                          child.destroy();
+                        }
+                      });
+
+                      // Show speech bubble with more visible debug
+                      console.log(
+                        `Showing speech bubble for player ${user.id.substring(
+                          0,
+                          8
+                        )}: "${latestMessage.text}"`
+                      );
+
+                      // Create speech bubble
+                      const bubble = scene.add.graphics();
+                      bubble.fillStyle(0xffffff, 1);
+                      bubble.lineStyle(2, 0x000000, 1);
+
+                      const message = scene.add
+                        .text(100, 25, latestMessage.text, {
+                          fontFamily: "Arial",
+                          fontSize: "14px",
+                          color: "#000000",
+                          align: "center",
+                          wordWrap: { width: 180 },
+                        })
+                        .setOrigin(0.5);
+
+                      const container = scene.add.container(
+                        user.position.x,
+                        user.position.y - 100
+                      );
+                      container.name = `speechBubble_${user.id}`;
+                      container.add([bubble, message]);
+
+                      // Auto remove after remaining time (less than 5s)
+                      const timeRemaining =
+                        5000 - (Date.now() - latestMessage.timestamp);
+                      const removeTimer = scene.time.delayedCall(
+                        timeRemaining,
+                        () => {
+                          container.destroy();
+                        }
+                      );
+
+                      // Track for cleanup
+                      activeTimers.current.push(removeTimer);
+                    }
+                  }
+                }
+              });
+            }
+          }
+        }
+      } catch (error) {
+        console.error("Error in multiplayer polling:", error);
+        setMultiplayerStatus("disconnected");
+      }
+    };
+
+    // Start the polling (every 333ms for more responsive updates)
+    fetchOtherPlayers(); // Initial fetch
+    pollingIntervalRef.current = setInterval(fetchOtherPlayers, 333);
+
+    // Cleanup on unmount
+    return () => {
+      if (pollingIntervalRef.current) {
+        clearInterval(pollingIntervalRef.current);
+      }
+    };
+  }, [address, playerId, currentRoom, selectedCharacter]);
+
+  // Modified chat handling to better support multiplayer
+  useEffect(() => {
+    const handleChatEvent = async (e: Event) => {
+      const customEvent = e as CustomEvent;
+      const { message } = customEvent.detail;
+
+      // The original event listeners will handle displaying the message locally
+      console.log(`Sending chat message to server: "${message}"`);
+
+      // Additionally, send the message to the server for other players
+      if (message && playerId) {
+        try {
+          // Map the current room to the format that the server expects
+          let currentGameRoom = currentRoom;
+          if (currentRoom === "adults-only") currentGameRoom = "adult";
+          else if (currentRoom === "kids-only") currentGameRoom = "kids";
+          else currentGameRoom = "general";
+
+          const chatResponse = await fetch("/api/socket", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              userId: playerId,
+              message: message,
+              room: currentGameRoom,
+            }),
+          });
+
+          const result = await chatResponse.json();
+          console.log("Chat message sent to server:", result);
+        } catch (error) {
+          console.error("Error sending chat message to server:", error);
+        }
+      }
+    };
+
+    window.addEventListener("chat_message", handleChatEvent as EventListener);
+    window.addEventListener(
+      "direct_chat_message",
+      handleChatEvent as EventListener
+    );
+
+    return () => {
+      window.removeEventListener(
+        "chat_message",
+        handleChatEvent as EventListener
+      );
+      window.removeEventListener(
+        "direct_chat_message",
+        handleChatEvent as EventListener
+      );
+    };
+  }, [playerId, currentRoom]);
 
   // Add function to fetch user's subdomain
   const fetchUserSubdomain = useCallback(async () => {
@@ -1366,7 +1732,28 @@ export default function GameWorld() {
     }
   };
 
-  // Remove methods that dealt with ENS name display
+  // Fix the ENS name override error
+  const [ensNameOverride, setEnsNameOverride] = useState<string | null>(null);
+
+  // Update useEffect to respect the name override
+  useEffect(() => {
+    if (ensNameOverride) {
+      setUserSubdomain(ensNameOverride);
+
+      // Update the player label in the game
+      if (gameInstanceRef.current) {
+        const scene = gameInstanceRef.current.scene.getScene(
+          "MainScene"
+        ) as GameScene;
+        if (scene && scene.playerLabel) {
+          scene.playerLabel.setText(ensNameOverride);
+        }
+      }
+    }
+  }, [ensNameOverride]);
+
+  // Add debug state to toggle visibility
+  const [showDebug, setShowDebug] = useState(false);
 
   if (!address) {
     return <div>Please connect your wallet to play</div>;
@@ -1375,6 +1762,92 @@ export default function GameWorld() {
   return (
     <div className="w-full h-full absolute inset-0 overflow-hidden">
       <div ref={gameRef} className="w-full h-full" />
+
+      {/* Debug overlay toggle button */}
+      <button
+        className="absolute top-4 left-4 bg-purple-600 bg-opacity-80 text-white px-3 py-2 rounded-lg hover:bg-purple-500 z-50"
+        onClick={() => setShowDebug(!showDebug)}
+      >
+        {showDebug ? "Hide Debug" : "Show Debug"}
+      </button>
+
+      {/* Debug overlay */}
+      {showDebug && (
+        <div className="absolute top-16 left-4 p-4 bg-black bg-opacity-75 rounded-lg z-50 text-white max-w-md text-xs overflow-auto max-h-[70vh]">
+          <h3 className="font-bold text-purple-400 mb-2">Debug Information</h3>
+          <div className="grid grid-cols-[auto_1fr] gap-x-2 gap-y-1">
+            <div>My ID:</div>
+            <div className="font-mono">{playerId.substring(0, 16)}...</div>
+            <div>Current Room:</div>
+            <div>{currentRoom}</div>
+            <div>Character:</div>
+            <div>{selectedCharacter || "default"}</div>
+            <div>Other Players:</div>
+            <div>{otherPlayers.length}</div>
+          </div>
+
+          {otherPlayers.length > 0 && (
+            <>
+              <h4 className="font-bold text-blue-400 mt-3 mb-1">
+                Other Players:
+              </h4>
+              <div className="border border-gray-700 rounded p-2 mt-1">
+                {otherPlayers.map((player, idx) => (
+                  <div
+                    key={idx}
+                    className="mb-2 pb-2 border-b border-gray-700 last:border-0 last:mb-0 last:pb-0"
+                  >
+                    <div className="font-mono text-green-400">
+                      ID: {player.id.substring(0, 12)}...
+                    </div>
+                    <div>Room: {player.room}</div>
+                    <div>Character: {player.character}</div>
+                    <div>
+                      Position: x={player.position.x.toFixed(0)}, y=
+                      {player.position.y.toFixed(0)}
+                    </div>
+                    <div>Messages: {player.messages?.length || 0}</div>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+
+          <button
+            className="mt-4 bg-blue-600 text-white px-2 py-1 rounded text-xs"
+            onClick={() => {
+              localStorage.removeItem("player_id");
+              window.location.reload();
+            }}
+          >
+            Reset Player ID & Reload
+          </button>
+        </div>
+      )}
+
+      {/* Status indicator for multiplayer */}
+      <div className="absolute bottom-4 right-4 z-50 flex items-center space-x-2 bg-black bg-opacity-50 rounded px-2 py-1">
+        <div
+          className={`w-3 h-3 rounded-full ${
+            multiplayerStatus === "connected"
+              ? "bg-green-500"
+              : multiplayerStatus === "connecting"
+              ? "bg-yellow-500"
+              : multiplayerStatus === "reconnecting"
+              ? "bg-yellow-500 animate-pulse"
+              : "bg-red-500"
+          }`}
+        />
+        <span className="text-xs text-white font-pixel">
+          {multiplayerStatus === "connected"
+            ? "Multiplayer Connected"
+            : multiplayerStatus === "connecting"
+            ? "Connecting..."
+            : multiplayerStatus === "reconnecting"
+            ? "Reconnecting..."
+            : "Connection Lost"}
+        </span>
+      </div>
 
       {/* Refresh subdomain button */}
       <button

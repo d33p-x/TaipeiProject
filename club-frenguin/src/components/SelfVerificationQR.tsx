@@ -16,8 +16,8 @@ export default function SelfVerificationQR() {
       scope: "club-frenguin",
       endpoint: `https://0703-138-199-60-32.ngrok-free.app/api/verify`,
       endpointType: "https",
-      logoBase64: "https://i.imgur.com/Rz8B3s7.png", // Replace with actual logo
-      userId: verificationId, // This is used to track verification status
+      logoBase64: "https://i.imgur.com/Rz8B3s7.png", //
+      userId: verificationId,
       disclosures: {
         minimumAge: 18, // Only verify if user is 18+
       },
