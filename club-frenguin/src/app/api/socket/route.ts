@@ -138,9 +138,7 @@ export async function POST(request: NextRequest) {
 
   // For debugging: log the POST action
   console.log(
-    `POST request - User ID: ${userId.substring(0, 8)}, Room: ${
-      room || "not specified"
-    }`
+    `POST request - User ID: ${userId.substring(0, 8)}, Room: ${room}`
   );
 
   // Create or update user
@@ -205,16 +203,37 @@ export async function POST(request: NextRequest) {
     }
   });
 
-  // Calculate how many users are in the same room
-  const usersInSameRoom = Object.values(connectedUsers).filter(
-    (user) => user.room === room && user.id !== userId
-  ).length;
+  // Calculate how many users are in the same room (for debugging)
+  const allUsers = Object.values(connectedUsers).filter(
+    (user) => user.id !== userId
+  );
+
+  const usersInSameRoom = allUsers.filter((user) => user.room === room);
+
+  // List all users for debugging
+  if (allUsers.length > 0) {
+    console.log(
+      `All other users: ${allUsers
+        .map((u) => `${u.id.substring(0, 8)} in room "${u.room}"`)
+        .join(", ")}`
+    );
+  }
 
   return NextResponse.json({
     success: true,
     usersCount: Object.keys(connectedUsers).length,
-    usersInRoom: usersInSameRoom,
+    usersInRoom: usersInSameRoom.length,
+    allUsersCount: allUsers.length,
     currentRoom: room,
     yourId: userId.substring(0, 8),
+    // Include all room data for debugging
+    rooms: {
+      [room]: usersInSameRoom.length,
+      total: Object.keys(connectedUsers).length,
+      all: Object.values(connectedUsers).reduce((acc, user) => {
+        acc[user.room] = (acc[user.room] || 0) + 1;
+        return acc;
+      }, {} as Record<string, number>),
+    },
   });
 }

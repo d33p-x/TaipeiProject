@@ -9,6 +9,7 @@ import {
 import { SpeechBubble } from "./Chat";
 import { ethers } from "ethers";
 import { v4 as uuidv4 } from "uuid";
+import TestPlayer from "./TestPlayer"; // Import the TestPlayer component
 
 // Define game types
 type GameScene = Phaser.Scene & {
@@ -68,6 +69,13 @@ function generateStablePlayerId(address: string, fallback: string): string {
   return fallback;
 }
 
+// Helper to ensure consistent room name formats - same as server-side function
+function normalizeRoomName(room: string): string {
+  if (room === "adults-only") return "adult";
+  if (room === "kids-only") return "kids";
+  return room;
+}
+
 export default function GameWorld() {
   const gameRef = useRef<HTMLDivElement>(null);
   const gameInstanceRef = useRef<Phaser.Game | null>(null);
@@ -94,6 +102,17 @@ export default function GameWorld() {
   // Contract addresses
   const registryAddress = "0x257ed5b68c2a32273db8490e744028a63acc771f";
   const registrarAddress = "0x38Fc7Af48B92F00AB5508d88648FF9a4C9D89b5E";
+
+  // Add debug state to toggle visibility
+  const [showDebug, setShowDebug] = useState(false);
+
+  // Add state to toggle showing all users regardless of room
+  const [showAllUsers, setShowAllUsers] = useState(false);
+
+  // State to store all users from all rooms
+  const [allRoomUsers, setAllRoomUsers] = useState<
+    Array<{ id: string; room: string }>
+  >([]);
 
   // Add state for other players
   const [otherPlayers, setOtherPlayers] = useState<
@@ -268,8 +287,26 @@ export default function GameWorld() {
 
               // Add new players
               data.users.forEach((user: any) => {
-                // Make sure we're comparing the same room format
-                const userIsInSameRoom = user.room === currentGameRoom;
+                // Make sure we're comparing the same room format - FIX THE COMPARISON LOGIC
+                // NEW CODE: Display all users regardless of room in debug mode
+                const userIsInSameRoom =
+                  showDebug && showAllUsers
+                    ? true // Show all users if debug mode has "show all users" enabled
+                    : normalizeRoomName(user.room) ===
+                      normalizeRoomName(currentGameRoom);
+
+                // Improved logging to debug room mismatches
+                console.log(
+                  `User ${user.id.substring(0, 8)} room: ${
+                    user.room
+                  }, normalized: ${normalizeRoomName(user.room)}`
+                );
+                console.log(
+                  `My room: ${currentGameRoom}, normalized: ${normalizeRoomName(
+                    currentGameRoom
+                  )}`
+                );
+                console.log(`Match? ${userIsInSameRoom}`);
 
                 if (user.id !== playerId && userIsInSameRoom) {
                   console.log(
@@ -279,19 +316,24 @@ export default function GameWorld() {
                     )} at position (${user.position.x}, ${user.position.y})`
                   );
 
-                  // Create sprite for the other player
+                  // Force specific position for testing visibility
                   const otherSprite = scene.add.sprite(
-                    user.position.x,
-                    user.position.y,
+                    400, // Force X to center for testing
+                    300, // Force Y to center for testing
                     user.character || "playerMale"
                   );
 
-                  // Create label for the other player
+                  // Make sure sprite is visible with high z-index
+                  otherSprite.setDepth(100);
+                  otherSprite.setScale(1.2); // Make it bigger for testing
+                  otherSprite.setTint(0xff0000); // Make it red for testing
+
+                  // Rest of the sprite and label creation...
                   const otherLabel = scene.add
                     .text(
-                      user.position.x,
-                      user.position.y + 40,
-                      user.id.substring(0, 8),
+                      otherSprite.x,
+                      otherSprite.y + 40,
+                      user.id.substring(0, 8) + " (OTHER PLAYER)",
                       {
                         fontFamily: "Pixelify Sans",
                         fontSize: "14px",
@@ -302,6 +344,9 @@ export default function GameWorld() {
                       }
                     )
                     .setOrigin(0.5);
+
+                  // Set high depth to make sure it's visible
+                  otherLabel.setDepth(100);
 
                   // Add to the otherPlayers map
                   scene.otherPlayers?.set(user.id, {
@@ -350,8 +395,8 @@ export default function GameWorld() {
                         .setOrigin(0.5);
 
                       const container = scene.add.container(
-                        user.position.x,
-                        user.position.y - 100
+                        otherSprite.x,
+                        otherSprite.y - 100
                       );
                       container.name = `speechBubble_${user.id}`;
                       container.add([bubble, message]);
@@ -1752,8 +1797,31 @@ export default function GameWorld() {
     }
   }, [ensNameOverride]);
 
-  // Add debug state to toggle visibility
-  const [showDebug, setShowDebug] = useState(false);
+  // Add useEffect to fetch all users regardless of room for debugging
+  useEffect(() => {
+    if (!showDebug || !playerId) return;
+
+    const fetchAllUsers = async () => {
+      try {
+        const response = await fetch(
+          `/api/socket?userId=${playerId}&room=general`
+        );
+        const data = await response.json();
+
+        if (data.allUsers) {
+          setAllRoomUsers(data.allUsers);
+        }
+      } catch (error) {
+        console.error("Error fetching all users:", error);
+      }
+    };
+
+    // Run immediately and every 2 seconds
+    fetchAllUsers();
+    const interval = setInterval(fetchAllUsers, 2000);
+
+    return () => clearInterval(interval);
+  }, [showDebug, playerId]);
 
   if (!address) {
     return <div>Please connect your wallet to play</div>;
@@ -1762,6 +1830,7 @@ export default function GameWorld() {
   return (
     <div className="w-full h-full absolute inset-0 overflow-hidden">
       <div ref={gameRef} className="w-full h-full" />
+      <TestPlayer gameInstance={gameInstanceRef.current} />
 
       {/* Debug overlay toggle button */}
       <button
@@ -1785,6 +1854,42 @@ export default function GameWorld() {
             <div>Other Players:</div>
             <div>{otherPlayers.length}</div>
           </div>
+
+          {/* Toggle to show all users across all rooms */}
+          <div className="mt-4 flex items-center mb-2">
+            <button
+              className={`px-2 py-1 rounded text-xs mr-2 ${
+                showAllUsers ? "bg-green-600" : "bg-gray-600"
+              }`}
+              onClick={() => setShowAllUsers(!showAllUsers)}
+            >
+              {showAllUsers ? "✓ All Users" : "☐ All Users"}
+            </button>
+            <span className="text-gray-300">Show players from all rooms</span>
+          </div>
+
+          {/* Show all users from all rooms when toggle is on */}
+          {showAllUsers && allRoomUsers.length > 0 && (
+            <div className="border border-purple-800 rounded p-2 bg-purple-900 bg-opacity-30 mb-4">
+              <h4 className="font-bold text-purple-400 mb-1">
+                All Connected Users:
+              </h4>
+              <div className="grid grid-cols-2 gap-1">
+                {allRoomUsers.map((user, idx) => (
+                  <div
+                    key={idx}
+                    className={`text-xs px-1 py-0.5 rounded ${
+                      user.room === normalizeRoomName(currentRoom)
+                        ? "bg-blue-900"
+                        : "bg-gray-800"
+                    }`}
+                  >
+                    {user.id} → {user.room}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {otherPlayers.length > 0 && (
             <>
@@ -1813,14 +1918,95 @@ export default function GameWorld() {
             </>
           )}
 
+          <div className="mt-4 flex space-x-2">
+            <button
+              className="bg-blue-600 text-white px-2 py-1 rounded text-xs"
+              onClick={() => {
+                localStorage.removeItem("player_id");
+                window.location.reload();
+              }}
+            >
+              Reset Player ID & Reload
+            </button>
+
+            <button
+              className="bg-red-600 text-white px-2 py-1 rounded text-xs"
+              onClick={() => {
+                // Force change room to trigger an update
+                let newRoom = currentRoom;
+                if (currentRoom === "general") newRoom = "adults-only";
+                else if (currentRoom === "adults-only") newRoom = "kids-only";
+                else newRoom = "general";
+
+                setCurrentRoom(newRoom);
+
+                // Show feedback
+                if (gameInstanceRef.current) {
+                  const scene = gameInstanceRef.current.scene.getScene(
+                    "MainScene"
+                  ) as GameScene;
+                  if (scene && scene.showAccessDeniedMessage) {
+                    scene.showAccessDeniedMessage(
+                      `Forced room change to: ${newRoom}`
+                    );
+                  }
+                }
+              }}
+            >
+              Force Room Change
+            </button>
+          </div>
+
+          {/* Add Force Visible Player button */}
           <button
-            className="mt-4 bg-blue-600 text-white px-2 py-1 rounded text-xs"
+            className="mt-4 bg-purple-600 text-white px-2 py-1 rounded text-xs w-full"
             onClick={() => {
-              localStorage.removeItem("player_id");
-              window.location.reload();
+              // Add a test player directly using the game instance
+              if (gameInstanceRef.current) {
+                const scene = gameInstanceRef.current.scene.getScene(
+                  "MainScene"
+                ) as GameScene;
+                if (!scene) return;
+
+                // Clean up previous test players
+                scene.children.list.forEach((child: any) => {
+                  if (
+                    child.name === "testPlayer" ||
+                    child.name === "testPlayerLabel"
+                  ) {
+                    child.destroy();
+                  }
+                });
+
+                // Create new test player
+                const testPlayer = scene.add.sprite(400, 300, "playerMale");
+                testPlayer.setDepth(999);
+                testPlayer.setScale(1.5);
+                testPlayer.setTint(0xff0000);
+                testPlayer.name = "testPlayer";
+
+                // Add label
+                const label = scene.add
+                  .text(400, 340, "FORCED TEST PLAYER", {
+                    fontFamily: "Pixelify Sans",
+                    fontSize: "14px",
+                    color: "#FFFFFF",
+                    padding: { x: 3, y: 2 },
+                    stroke: "#000000",
+                    strokeThickness: 3,
+                  })
+                  .setOrigin(0.5);
+                label.setDepth(999);
+                label.name = "testPlayerLabel";
+
+                // Show feedback
+                scene.showAccessDeniedMessage?.(
+                  "Added a forced test player sprite"
+                );
+              }
             }}
           >
-            Reset Player ID & Reload
+            Force Visible Player
           </button>
         </div>
       )}
