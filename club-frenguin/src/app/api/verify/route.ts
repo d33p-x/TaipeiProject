@@ -18,7 +18,7 @@ export async function POST(req: NextRequest) {
     // Configure the verifier with minimum age of 18
     const configuredVerifier = new SelfBackendVerifier(
       "club-frenguin",
-      "https://club-frenguin.xyz", // Update with actual URL in production
+      "https://0703-138-199-60-32.ngrok-free.app", // Use same URL as in QR code
       "uuid",
       false // not dev mode in production
     );
@@ -31,11 +31,33 @@ export async function POST(req: NextRequest) {
     console.log("Verification result:", result);
 
     if (result.isValid) {
+      // Store the verification result
+      try {
+        await fetch(
+          `${
+            process.env.NEXT_PUBLIC_VERCEL_URL ||
+            "https://0703-138-199-60-32.ngrok-free.app"
+          }/api/verification-status`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              id: userId,
+              verified: true,
+            }),
+          }
+        );
+      } catch (storeError) {
+        console.error("Error storing verification result:", storeError);
+      }
+
       return NextResponse.json({
         status: "success",
         result: result.isValid,
-        // Send back only basic info - no need to expose sensitive data
-        age: result.credentialSubject?.age || "Not verified",
+        // Send back verification status only
+        ageVerified: true,
       });
     } else {
       return NextResponse.json(

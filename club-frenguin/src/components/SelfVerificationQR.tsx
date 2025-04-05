@@ -14,14 +14,14 @@ export default function SelfVerificationQR() {
     const app = new SelfAppBuilder({
       appName: "Club Frenguin",
       scope: "club-frenguin",
-      endpoint: `${window.location.origin}/api/verify`,
+      endpoint: `https://0703-138-199-60-32.ngrok-free.app/api/verify`,
       endpointType: "https",
       logoBase64: "https://i.imgur.com/Rz8B3s7.png", // Replace with actual logo
-      userId: verificationId,
+      userId: verificationId, // This is used to track verification status
       disclosures: {
         minimumAge: 18, // Only verify if user is 18+
       },
-      devMode: process.env.NODE_ENV === "development",
+      //   devMode: process.env.NODE_ENV === "development",
     } as Partial<SelfApp>).build();
 
     setSelfApp(app);

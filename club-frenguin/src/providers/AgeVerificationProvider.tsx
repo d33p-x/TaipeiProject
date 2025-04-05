@@ -88,6 +88,47 @@ export function AgeVerificationProvider({ children }: { children: ReactNode }) {
     );
   };
 
+  // Add polling mechanism to check verification status
+  useEffect(() => {
+    if (!isVerifying || !verificationId) return;
+
+    let isMounted = true;
+
+    const checkVerificationStatus = async () => {
+      try {
+        const response = await fetch(
+          `/api/verification-status?id=${verificationId}`
+        );
+
+        if (!response.ok) {
+          console.error(
+            "Error checking verification status:",
+            response.statusText
+          );
+          return;
+        }
+
+        const data = await response.json();
+
+        if (data.verified && isMounted) {
+          console.log("Verification successful!");
+          handleVerificationSuccess(true);
+        }
+      } catch (error) {
+        console.error("Error checking verification status:", error);
+      }
+    };
+
+    // Check immediately and then every 2 seconds
+    checkVerificationStatus();
+    const intervalId = setInterval(checkVerificationStatus, 2000);
+
+    return () => {
+      isMounted = false;
+      clearInterval(intervalId);
+    };
+  }, [isVerifying, verificationId]);
+
   // API endpoint to handle verification result
   // This would typically be called by the Self Protocol after verification
   useEffect(() => {
