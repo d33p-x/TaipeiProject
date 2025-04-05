@@ -18,16 +18,15 @@ It's like Club Penguin meets ZK identity — but safer, permissionless, and onch
 
 1. ZK Identity Verification
 	•	Uses Self Protocol to scan passport NFC data and generate a zk-proof
-	•	User discloses only what's necessary (e.g. age, nationality, OFAC check)
-	•	Proof is verified offchain (via backend) or onchain (via contract)
+	•	User discloses only what's necessary (e.g. age, nationality, gender)
+
 
 2. Avatar Creation
 	•	After verification, users get a penguin-like avatar
 	•	Avatar style (color/accessories) reflects age, gender, etc.
-	•	Optionally minted as a soulbound NFT (stored onchain, unique to user)
 
 3. ENS Subname Assignment
-	•	User gets a free subdomain (e.g., kai.clubfrenguin.eth)
+	•	User gets a free subdomain (e.g., kai.frenguin.eth)
 	•	This name ties together identity, chat presence, and garden ownership
 
 4. The Gardenverse
@@ -35,17 +34,12 @@ It's like Club Penguin meets ZK identity — but safer, permissionless, and onch
 	•	Each garden/room is access-controlled by zk-proof criteria:
 	•	🌸 Bloom Lounge: Age under 18
 	•	🌲 Elder Grove: Age 18+
-	•	🪷 Zen Pond: Passed OFAC check
 	•	On access, zk-proof is verified silently, keeping user data private
 
 5. Real-Time Chat
 	•	Socket.io powers chat bubbles above avatars
 	•	Chat is gated by the same zk-proof criteria as rooms
 	•	Messages appear only to users in the same room
-
-6. Token Rewards (via Metal)
-	•	Users earn a token like $SEED when entering spaces or interacting
-	•	Tokens are created via Metal's token minting API (no wallet UX required)
 
 ⸻
 
@@ -54,11 +48,7 @@ It's like Club Penguin meets ZK identity — but safer, permissionless, and onch
 Sponsor	Integration
 Self Protocol	Passport-based zk identity verification
 ENS	Assigns onchain subname (e.g., user.clubfrenguin.eth)
-Metal	Mints & sends onchain token rewards ($SEED or similar)
 
-Optional:
-	•	Could use ENS Profile to display user avatar & metadata
-	•	Could deploy on Celo or Polygon for gasless interaction
 
 ⸻
 
@@ -68,11 +58,9 @@ Optional:
 	•	Real-time Chat: Socket.io (for chat bubbles and room-based messaging)
 	•	Backend: Node.js + Express or Next.js API Routes
 	•	Smart Contracts:
-	•	Minimal ERC721 (optional NFT avatars)
-	•	ENS NameWrapper for subnames
+	•	Durin ENS Registrar for subnames
 	•	Identity: Self Protocol SDK (@selfxyz/qrcode, @selfxyz/core)
-	•	ENS: ethers.js / viem + ENS libraries
-	•	Token: Metal SDK or custom backend API call to mint tokens
+
 
 ⸻
 
@@ -85,7 +73,7 @@ Optional:
 	6.	Enter 2D Phaser.js world
 	7.	Move avatar and chat with others in same room
 	8.	Attempt to enter gated rooms — zk proof decides
-	9.	Earn tokens, meet frens, explore gardens
+	9.	Meet frens, explore gardens
 
 ⸻
 
@@ -103,7 +91,7 @@ Optional:
 	•	Prevents bots and predators with proof of humanity + age verification
 	•	Onchain social without exposing users
 	•	Real-time interaction with privacy guardrails
-	•	ENS and Metal enhance persistence and rewards
+	•	ENS enhance persistence
 	•	Expands the idea of identity as access — without KYC or surveillance
 
 ⸻
