@@ -21,6 +21,10 @@ type GameScene = Phaser.Scene & {
   adultRoom?: Phaser.GameObjects.Container;
   generalObjects?: Phaser.GameObjects.Components.Visible[];
   adultObjects?: Phaser.GameObjects.Components.Visible[];
+  doorZone?: Phaser.GameObjects.Zone;
+  exitZone?: Phaser.GameObjects.Zone;
+  nearDoor?: boolean;
+  nearExit?: boolean;
 };
 
 export default function GameWorld() {
@@ -72,10 +76,16 @@ export default function GameWorld() {
             scene.currentRoom = "general";
             scene.generalObjects = [];
             scene.adultObjects = [];
+            scene.nearDoor = false;
+            scene.nearExit = false;
 
             // Set up camera
             this.cameras.main.setBackgroundColor("#000000");
-            this.cameras.main.setBounds(0, 0, 800, 600);
+
+            // Get the actual game dimensions for responsive sizing
+            const width = this.sys.game.canvas.width;
+            const height = this.sys.game.canvas.height;
+            this.cameras.main.setBounds(0, 0, width, height);
 
             // Create world container for each room
             const generalWorld = this.add.container(0, 0);
@@ -87,14 +97,14 @@ export default function GameWorld() {
             // General room (visible by default)
             // Add general room background
             const generalBackground = this.add
-              .image(400, 300, "grass")
-              .setDisplaySize(800, 600);
+              .image(width / 2, height / 2, "grass")
+              .setDisplaySize(width, height);
             generalWorld.add(generalBackground);
             scene.generalObjects.push(generalBackground);
 
             // Add room label (only one)
             const generalRoomLabel = this.add
-              .text(400, 50, "General Room", {
+              .text(width / 2, 80, "General Room", {
                 fontFamily: "Arial",
                 fontSize: "20px",
                 color: "#FFFFFF",
@@ -105,18 +115,40 @@ export default function GameWorld() {
             generalWorld.add(generalRoomLabel);
             scene.generalObjects.push(generalRoomLabel);
 
-            // Add door to adult room
-            const adultRoomDoor = this.add
-              .rectangle(750, 300, 50, 100, 0xaa0000)
-              .setInteractive();
+            // Add door to adult room visual (no longer interactive)
+            const adultRoomDoor = this.add.rectangle(
+              width - 70,
+              height / 2,
+              70,
+              140,
+              0xaa0000
+            );
             generalWorld.add(adultRoomDoor);
             scene.generalObjects.push(adultRoomDoor);
 
-            const doorLabel = this.add
-              .text(750, 280, "18+", {
+            // Add invisible door zone that will detect player proximity
+            scene.doorZone = this.add.zone(width - 100, height / 2, 150, 200);
+            scene.doorZone.setOrigin(0.5);
+
+            // Add visual instructions
+            const doorInstructions = this.add
+              .text(width - 70, height / 2 + 70, "Walk here to enter", {
                 fontFamily: "Arial",
-                fontSize: "16px",
+                fontSize: "14px",
                 color: "#FFFFFF",
+                backgroundColor: "#000000",
+                padding: { x: 3, y: 2 },
+              })
+              .setOrigin(0.5);
+            generalWorld.add(doorInstructions);
+            scene.generalObjects.push(doorInstructions);
+
+            const doorLabel = this.add
+              .text(width - 70, height / 2 - 20, "18+", {
+                fontFamily: "Arial",
+                fontSize: "24px",
+                color: "#FFFFFF",
+                fontStyle: "bold",
               })
               .setOrigin(0.5);
             generalWorld.add(doorLabel);
@@ -125,8 +157,8 @@ export default function GameWorld() {
             // Adult room
             // Add adult room background and objects
             const adultBackground = this.add
-              .image(400, 300, "grass")
-              .setDisplaySize(800, 600);
+              .image(width / 2, height / 2, "grass")
+              .setDisplaySize(width, height);
             // Add a red tint to adult room
             adultBackground.setTint(0xffaaaa);
             adultWorld.add(adultBackground);
@@ -134,7 +166,7 @@ export default function GameWorld() {
 
             // Add room label
             const adultRoomLabel = this.add
-              .text(400, 50, "Adult Only (18+)", {
+              .text(width / 2, 80, "Adult Only (18+)", {
                 fontFamily: "Arial",
                 fontSize: "20px",
                 color: "#FFFFFF",
@@ -145,18 +177,40 @@ export default function GameWorld() {
             adultWorld.add(adultRoomLabel);
             scene.adultObjects.push(adultRoomLabel);
 
-            // Add door back to general room
-            const backToDoor = this.add
-              .rectangle(50, 300, 50, 100, 0x0000aa)
-              .setInteractive();
+            // Add door back to general room visual (no longer interactive)
+            const backToDoor = this.add.rectangle(
+              70,
+              height / 2,
+              70,
+              140,
+              0x0000aa
+            );
             adultWorld.add(backToDoor);
             scene.adultObjects.push(backToDoor);
 
-            const backText = this.add
-              .text(50, 280, "Exit", {
+            // Add invisible exit zone that will detect player proximity
+            scene.exitZone = this.add.zone(100, height / 2, 150, 200);
+            scene.exitZone.setOrigin(0.5);
+
+            // Add visual instructions
+            const exitInstructions = this.add
+              .text(70, height / 2 + 70, "Walk here to exit", {
                 fontFamily: "Arial",
-                fontSize: "16px",
+                fontSize: "14px",
                 color: "#FFFFFF",
+                backgroundColor: "#000000",
+                padding: { x: 3, y: 2 },
+              })
+              .setOrigin(0.5);
+            adultWorld.add(exitInstructions);
+            scene.adultObjects.push(exitInstructions);
+
+            const backText = this.add
+              .text(70, height / 2 - 20, "Exit", {
+                fontFamily: "Arial",
+                fontSize: "24px",
+                color: "#FFFFFF",
+                fontStyle: "bold",
               })
               .setOrigin(0.5);
             adultWorld.add(backText);
@@ -167,13 +221,17 @@ export default function GameWorld() {
             scene.adultRoom = adultWorld;
 
             // Add player
-            scene.playerSprite = this.add.sprite(400, 300, "player");
+            scene.playerSprite = this.add.sprite(
+              width / 2,
+              height / 2,
+              "player"
+            );
 
-            // Add player label (wallet address)
+            // Add player label (wallet address) - BELOW the avatar
             scene.playerLabel = this.add
               .text(
-                400,
-                270,
+                width / 2,
+                height / 2 + 30, // Changed to position label below avatar
                 address
                   ? `${address.slice(0, 6)}...${address.slice(-4)}`
                   : "Player",
@@ -185,44 +243,20 @@ export default function GameWorld() {
                   padding: { x: 3, y: 2 },
                 }
               )
-              .setOrigin(0.5, 1);
+              .setOrigin(0.5, 0); // Changed from 0.5, 1 to 0.5, 0 for alignment
 
             // Setup keyboard input
             scene.cursors = this.input.keyboard?.createCursorKeys();
-
-            // Door interactions
-            adultRoomDoor.on("pointerup", () => {
-              // Check if player can access adult room
-              if (scene.isAdult !== true) {
-                // Show a notification
-                if (!this.registry.get("adultsOnlyMessageShown")) {
-                  alert(
-                    "Adults Only! You need to verify your age to enter this room."
-                  );
-                  this.registry.set("adultsOnlyMessageShown", true);
-                }
-                return;
-              }
-
-              // Switch to adult room
-              this.switchRoom("adult");
-
-              // If entering adult room, show token reward notification
-              alert(
-                "🎉 You earned 5 FRENG tokens for entering the adults-only lounge!"
-              );
-            });
-
-            backToDoor.on("pointerup", () => {
-              // Switch back to general room
-              this.switchRoom("general");
-            });
           }
 
           switchRoom(roomName: string) {
             const scene = this as GameScene;
             if (!scene.playerSprite || !scene.generalRoom || !scene.adultRoom)
               return;
+
+            // Get dimensions
+            const width = this.sys.game.canvas.width;
+            const height = this.sys.game.canvas.height;
 
             if (roomName === "adult" && scene.currentRoom !== "adult") {
               // Hide general room
@@ -232,7 +266,7 @@ export default function GameWorld() {
 
               // Move player to adult room entrance
               scene.playerSprite.x = 100;
-              scene.playerSprite.y = 300;
+              scene.playerSprite.y = height / 2;
 
               // Update current room
               scene.currentRoom = "adult";
@@ -247,8 +281,8 @@ export default function GameWorld() {
               scene.generalRoom.setVisible(true);
 
               // Move player to general room entrance
-              scene.playerSprite.x = 700;
-              scene.playerSprite.y = 300;
+              scene.playerSprite.x = width - 100;
+              scene.playerSprite.y = height / 2;
 
               // Update current room
               scene.currentRoom = "general";
@@ -260,6 +294,10 @@ export default function GameWorld() {
             const scene = this as GameScene;
             if (!scene.playerSprite || !scene.cursors || !scene.playerLabel)
               return;
+
+            // Get dimensions
+            const width = this.sys.game.canvas.width;
+            const height = this.sys.game.canvas.height;
 
             // Handle player movement
             const speed = 3;
@@ -281,23 +319,80 @@ export default function GameWorld() {
               moved = true;
             }
 
-            // Update label position to follow sprite
+            // Update label position to follow sprite (BELOW the player)
             scene.playerLabel.x = scene.playerSprite.x;
-            scene.playerLabel.y = scene.playerSprite.y - 30;
+            scene.playerLabel.y = scene.playerSprite.y + 30;
+
+            // Check if player is near the door or exit
+            if (scene.doorZone && scene.currentRoom === "general") {
+              const bounds = scene.doorZone.getBounds();
+              const playerInDoorZone = Phaser.Geom.Rectangle.Contains(
+                bounds,
+                scene.playerSprite.x,
+                scene.playerSprite.y
+              );
+
+              // If player enters door zone and wasn't already in it
+              if (playerInDoorZone && !scene.nearDoor) {
+                scene.nearDoor = true;
+                // Check if player can access adult room
+                if (scene.isAdult !== true) {
+                  // Show a notification
+                  if (!this.registry.get("adultsOnlyMessageShown")) {
+                    alert(
+                      "Adults Only! You need to verify your age to enter this room."
+                    );
+                    this.registry.set("adultsOnlyMessageShown", true);
+                  }
+                } else {
+                  // Switch to adult room automatically
+                  this.switchRoom("adult");
+                  // If entering adult room, show token reward notification
+                  alert(
+                    "🎉 You earned 5 FRENG tokens for entering the adults-only lounge!"
+                  );
+                }
+              } else if (!playerInDoorZone && scene.nearDoor) {
+                scene.nearDoor = false;
+              }
+            }
+
+            // Check if player is near the exit
+            if (scene.exitZone && scene.currentRoom === "adult") {
+              const bounds = scene.exitZone.getBounds();
+              const playerInExitZone = Phaser.Geom.Rectangle.Contains(
+                bounds,
+                scene.playerSprite.x,
+                scene.playerSprite.y
+              );
+
+              // If player enters exit zone and wasn't already in it
+              if (playerInExitZone && !scene.nearExit) {
+                scene.nearExit = true;
+                // Switch back to general room automatically
+                this.switchRoom("general");
+              } else if (!playerInExitZone && scene.nearExit) {
+                scene.nearExit = false;
+              }
+            }
 
             // Add boundaries to keep player in the room
-            if (scene.playerSprite.x < 50) scene.playerSprite.x = 50;
-            if (scene.playerSprite.x > 750) scene.playerSprite.x = 750;
-            if (scene.playerSprite.y < 50) scene.playerSprite.y = 50;
-            if (scene.playerSprite.y > 550) scene.playerSprite.y = 550;
+            const margin = 50;
+            if (scene.playerSprite.x < margin) scene.playerSprite.x = margin;
+            if (scene.playerSprite.x > width - margin)
+              scene.playerSprite.x = width - margin;
+            if (scene.playerSprite.y < margin) scene.playerSprite.y = margin;
+            if (scene.playerSprite.y > height - margin)
+              scene.playerSprite.y = height - margin;
           }
         }
 
         // Initialize the game
         const config: Phaser.Types.Core.GameConfig = {
           type: Phaser.AUTO,
-          width: 800,
-          height: 600,
+          // Use 100% width and calculate height based on aspect ratio
+          width: window.innerWidth,
+          height: window.innerHeight,
           parent: gameRef.current,
           scene: [MainScene],
           physics: {
@@ -308,8 +403,10 @@ export default function GameWorld() {
             },
           },
           scale: {
-            mode: Phaser.Scale.FIT,
+            mode: Phaser.Scale.RESIZE, // Change to RESIZE mode to fill page
             autoCenter: Phaser.Scale.CENTER_BOTH,
+            width: "100%",
+            height: "100%",
           },
           backgroundColor: "#000000",
           // Disable Canvas scrolling
@@ -318,6 +415,15 @@ export default function GameWorld() {
             pixelArt: false,
             antialias: true,
             antialiasGL: true,
+          },
+          // Add resize handler
+          callbacks: {
+            postBoot: (game) => {
+              // Handle window resize
+              window.addEventListener("resize", () => {
+                game.scale.resize(window.innerWidth, window.innerHeight);
+              });
+            },
           },
         };
 
@@ -342,16 +448,8 @@ export default function GameWorld() {
   }
 
   return (
-    <div className="relative">
-      {/* Add fixed height and prevent overflow */}
-      <div
-        ref={gameRef}
-        className="rounded-lg overflow-hidden shadow-lg"
-        style={{ height: "600px", maxHeight: "600px" }}
-      />
-      <div className="absolute bottom-2 left-2 bg-black bg-opacity-70 text-white px-3 py-1 rounded-full text-sm">
-        Room: {currentRoom === "general" ? "General Chat" : "Adults Only (18+)"}
-      </div>
+    <div className="w-full h-full absolute inset-0 overflow-hidden">
+      <div ref={gameRef} className="w-full h-full" />
     </div>
   );
 }
