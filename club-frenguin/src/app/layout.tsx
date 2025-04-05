@@ -13,7 +13,7 @@ const pixelifySans = Pixelify_Sans({
 });
 
 export const metadata: Metadata = {
-  title: "Club Frenguin",
+  title: "CLUB FRENGUIN",
   description:
     "A fun virtual world with age verification based on passport scans.",
 };

@@ -92,8 +92,8 @@ export default function Home() {
 
       {/* Header */}
       <div className="absolute top-0 left-0 right-0 z-10 py-2 text-center shadow-md">
-        <h1 className="text-2xl font-bold text-white font-pixel drop-shadow-lg">
-          Club Frenguin
+        <h1 className="text-2xl text-white font-pixel drop-shadow-lg">
+          CLUB FRENGUIN
         </h1>
         <p className="text-xs text-gray-300 font-pixel">
           A fun age-verified virtual world
@@ -343,11 +343,8 @@ export default function Home() {
         </div>
       )}
 
-      {/* Room Status with instructions (only when in game) */}
-      {/* Room information banner removed as requested */}
-
       {/* Chat (only when in game) */}
-      <div className="absolute bottom-4 left-4 z-10">
+      <div className="absolute bottom-8 left-8 z-10">
         {address && isAdult !== null && selectedCharacter && (
           <Chat
             room={

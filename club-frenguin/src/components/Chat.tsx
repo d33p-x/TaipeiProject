@@ -133,7 +133,7 @@ export default function Chat({ room }: ChatProps) {
   return (
     <div className="chat-container">
       {/* WoW-style chat log in bottom left */}
-      <div className="bg-black bg-opacity-60 rounded-md p-2 max-w-xs text-white text-xs h-32 overflow-y-auto flex flex-col">
+      <div className="bg-black bg-opacity-60 rounded-md p-2 max-w-md text-white text-sm h-48 overflow-y-auto flex flex-col">
         <div className="flex-1 overflow-y-auto scrollbar-thin chat-message">
           {messages.map((msg) => (
             <div key={msg.id} className="mb-1">
@@ -164,11 +164,11 @@ export default function Chat({ room }: ChatProps) {
               }
             }}
             placeholder="Type a message..."
-            className="flex-1 bg-gray-800 text-white text-xs px-2 py-1 rounded-l outline-none chat-input"
+            className="flex-1 bg-gray-800 text-white text-sm px-2 py-1 rounded-l outline-none chat-input"
           />
           <button
             type="submit"
-            className="bg-blue-600 text-white text-xs rounded-r px-2 font-pixel"
+            className="bg-blue-600 text-white text-sm rounded-r px-2 font-pixel"
           >
             Send
           </button>

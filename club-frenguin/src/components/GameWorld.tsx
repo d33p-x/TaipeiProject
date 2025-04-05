@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import { useAccount } from "wagmi";
 import {
   useAgeVerification,
@@ -13,6 +13,7 @@ import { ethers } from "ethers";
 type GameScene = Phaser.Scene & {
   playerSprite?: Phaser.GameObjects.Sprite;
   playerLabel?: Phaser.GameObjects.Text;
+
   cursors?: Phaser.Types.Input.Keyboard.CursorKeys;
   otherPlayers?: Map<
     string,
@@ -83,8 +84,10 @@ export default function GameWorld() {
   const registrarAddress = "0x38Fc7Af48B92F00AB5508d88648FF9a4C9D89b5E";
 
   // Add function to fetch user's subdomain
-  const fetchUserSubdomain = async () => {
+  const fetchUserSubdomain = useCallback(async () => {
     if (!address) return;
+
+    console.log("Attempting to fetch subdomain for address:", address);
 
     try {
       // Connect to Base
@@ -96,6 +99,8 @@ export default function GameWorld() {
         "function addressToLabel(address) external view returns (string)",
       ];
 
+      console.log("Connecting to registrar contract at:", registrarAddress);
+
       const registrarContract = new ethers.Contract(
         registrarAddress,
         registrarAbi,
@@ -103,21 +108,66 @@ export default function GameWorld() {
       );
 
       // Call the addressToLabel function to get the user's subdomain
+      console.log("Calling addressToLabel for:", address);
       const label = await registrarContract.addressToLabel(address);
+      console.log("Received label from contract:", label);
 
       // If a label was found, set it as the user's subdomain
       if (label && label !== "") {
         console.log("Found ENS subdomain for address:", label);
         setUserSubdomain(label);
-      } else {
-        console.log("No subdomain found for address");
-        // Clear any previously set subdomain
-        setUserSubdomain(null);
+
+        // Update the player label in the game if it exists
+        if (gameInstanceRef.current) {
+          const scene = gameInstanceRef.current.scene.getScene(
+            "MainScene"
+          ) as GameScene;
+          if (scene && scene.playerLabel) {
+            scene.playerLabel.setText(label + "");
+          }
+        }
       }
     } catch (error) {
       console.error("Error fetching user subdomain:", error);
+      // Try to fetch with a fallback provider if MetaMask provider fails
+      try {
+        console.log("Trying fallback provider");
+        const fallbackProvider = new ethers.JsonRpcProvider(
+          "https://base-sepolia.g.alchemy.com/v2/demo"
+        );
+
+        const registrarAbi = [
+          "function addressToLabel(address) external view returns (string)",
+        ];
+
+        const registrarContract = new ethers.Contract(
+          registrarAddress,
+          registrarAbi,
+          fallbackProvider
+        );
+
+        const label = await registrarContract.addressToLabel(address);
+        console.log("Fallback provider received label:", label);
+
+        if (label && label !== "") {
+          console.log("Found ENS subdomain using fallback:", label);
+          setUserSubdomain(label);
+
+          // Update the player label in the game if it exists
+          if (gameInstanceRef.current) {
+            const scene = gameInstanceRef.current.scene.getScene(
+              "MainScene"
+            ) as GameScene;
+            if (scene && scene.playerLabel) {
+              scene.playerLabel.setText(label + "");
+            }
+          }
+        }
+      } catch (fallbackError) {
+        console.error("Fallback provider also failed:", fallbackError);
+      }
     }
-  };
+  }, [address, registrarAddress]);
 
   // Call the function when component mounts or address changes
   useEffect(() => {
@@ -140,7 +190,7 @@ export default function GameWorld() {
         window.removeEventListener("focus", handleFocus);
       };
     }
-  }, [address]);
+  }, [address, fetchUserSubdomain]);
 
   // Remove all ENS name effects
   useEffect(() => {
@@ -590,30 +640,31 @@ export default function GameWorld() {
               selectedCharacter || "playerMale" // Default fallback
             );
 
-            // Player direction state
-            scene.playerDirection = "down"; // Default facing down
-
-            // Add player label (wallet address or ENS name) - BELOW the avatar
-            scene.playerLabel = this.add
+            // Add player name label beneath the player
+            let nameText = userSubdomain
+              ? userSubdomain
+              : address?.slice(0, 6) + "..." + address?.slice(-4);
+            const playerLabel = this.add
               .text(
-                width / 2,
-                height / 2 + 45, // Move further down from 30 to 45
-                address
-                  ? userSubdomain
-                    ? `${userSubdomain}.frenguin.eth`
-                    : `${address.slice(0, 6)}...${address.slice(-4)}`
-                  : "Player",
+                scene.playerSprite.x,
+                scene.playerSprite.y + 40,
+                nameText + "",
                 {
-                  fontFamily: "Arial",
-                  fontSize: "16px", // Increase text size for better visibility
+                  fontFamily: "Pixelify Sans",
+                  fontSize: "14px",
                   color: "#FFFFFF",
-                  padding: { x: 4, y: 2 },
+                  padding: { x: 3, y: 2 },
                   stroke: "#000000",
-                  strokeThickness: 5, // Thicker stroke for better visibility
+                  strokeThickness: 3,
                 }
               )
-              .setOrigin(0.5, 0)
-              .setDepth(10000); // Much higher depth to ensure it's on top
+              .setOrigin(0.5);
+
+            // Store the label reference for later updates
+            scene.playerLabel = playerLabel;
+
+            // Player direction state
+            scene.playerDirection = "down"; // Default facing down
 
             // Setup keyboard input
             scene.cursors = this.input.keyboard?.createCursorKeys();
@@ -823,14 +874,6 @@ export default function GameWorld() {
               scene.currentRoom = "adult";
               setCurrentRoom("adults-only");
 
-              // Make sure the player label is visible and positioned correctly
-              if (scene.playerLabel && scene.playerSprite) {
-                scene.playerLabel.x = scene.playerSprite.x;
-                scene.playerLabel.y = scene.playerSprite.y + 45;
-                scene.playerLabel.setVisible(true);
-                scene.playerLabel.setDepth(10000);
-              }
-
               // Notify the application about room change (for parent components)
               window.postMessage(
                 { type: "ROOM_CHANGE", room: "adults-only" },
@@ -850,14 +893,6 @@ export default function GameWorld() {
               // Update current room
               scene.currentRoom = "kids";
               setCurrentRoom("kids-only");
-
-              // Make sure the player label is visible and positioned correctly
-              if (scene.playerLabel && scene.playerSprite) {
-                scene.playerLabel.x = scene.playerSprite.x;
-                scene.playerLabel.y = scene.playerSprite.y + 45;
-                scene.playerLabel.setVisible(true);
-                scene.playerLabel.setDepth(10000);
-              }
 
               // Notify the application about room change
               window.postMessage(
@@ -886,15 +921,6 @@ export default function GameWorld() {
               // Update current room
               scene.currentRoom = "general";
               setCurrentRoom("general");
-
-              // Make sure the player label is visible and positioned correctly
-              if (scene.playerLabel && scene.playerSprite) {
-                scene.playerLabel.x = scene.playerSprite.x;
-                scene.playerLabel.y = scene.playerSprite.y + 45;
-                scene.playerLabel.setVisible(true);
-                scene.playerLabel.setDepth(10000);
-              }
-
               // Notify the application about room change
               window.postMessage({ type: "ROOM_CHANGE", room: "general" }, "*");
             }
@@ -903,8 +929,7 @@ export default function GameWorld() {
           update() {
             // Optimize the update method to be more efficient
             const scene = this as GameScene;
-            if (!scene.playerSprite || !scene.cursors || !scene.playerLabel)
-              return;
+            if (!scene.playerSprite || !scene.cursors) return;
 
             // Reduce frequency of position updates for better performance
             const now = this.time.now;
@@ -975,17 +1000,6 @@ export default function GameWorld() {
               scene.playerDirection = direction;
             }
 
-            // Update player label position to follow sprite
-            if (scene.playerLabel && scene.playerSprite) {
-              // Position the label below the player sprite
-              scene.playerLabel.x = scene.playerSprite.x;
-              scene.playerLabel.y = scene.playerSprite.y + 45; // Position below player
-
-              // Ensure the label is visible and on top
-              scene.playerLabel.setVisible(true);
-              scene.playerLabel.setDepth(10000);
-            }
-
             // Update position state for speech bubble positioning - less frequently
             // Only update every 5th frame to reduce performance impact
             if (scene.updateCounter === undefined) {
@@ -1012,6 +1026,12 @@ export default function GameWorld() {
 
               // Update position state for speech bubble positioning
               setPlayerPosition({ x: screenX, y: screenY });
+
+              // Update player name label position to follow the player
+              if (scene.playerSprite && scene.playerLabel) {
+                scene.playerLabel.x = scene.playerSprite.x;
+                scene.playerLabel.y = scene.playerSprite.y + 40;
+              }
             }
 
             // Simple screen boundaries
@@ -1300,15 +1320,22 @@ export default function GameWorld() {
 
       // Registration successful
       setRegistrationStatus("success");
-      setStatusMessage(
-        `Successfully registered ${subdomainName}.frenguin.eth!`
-      );
+      setStatusMessage(`Successfully registered ${subdomainName}!`);
 
       // Update the state with the new subdomain to display it immediately
       setUserSubdomain(subdomainName);
 
+      // Update the player label in the game
+      if (gameInstanceRef.current) {
+        const scene = gameInstanceRef.current.scene.getScene(
+          "MainScene"
+        ) as GameScene;
+        if (scene && scene.playerLabel) {
+          scene.playerLabel.setText(subdomainName + "");
+        }
+      }
+
       // Refresh the user's subdomain from the blockchain
-      // in case other updates were made
       setTimeout(() => {
         fetchUserSubdomain();
       }, 2000); // Wait a bit for the blockchain to update
@@ -1320,7 +1347,7 @@ export default function GameWorld() {
         ) as GameScene;
         if (scene && scene.showAccessDeniedMessage) {
           scene.showAccessDeniedMessage(
-            `Success! Registered ${subdomainName}.frenguin.eth!`
+            `Success! Registered ${subdomainName}!`
           );
         }
       }
@@ -1330,7 +1357,7 @@ export default function GameWorld() {
         setShowEnsRegistration(false);
         setStatusMessage("");
         setRegistrationStatus("idle");
-        setSubdomainName("");
+        // setSubdomainName("");
       }, 3000);
     } catch (error) {
       console.error("Registration error:", error);
@@ -1340,29 +1367,6 @@ export default function GameWorld() {
   };
 
   // Remove methods that dealt with ENS name display
-  const setEnsNameOverride = (name: string) => {
-    // Simply show a success message
-    if (gameInstanceRef.current) {
-      const scene = gameInstanceRef.current.scene.getScene(
-        "MainScene"
-      ) as GameScene;
-      if (scene && scene.showAccessDeniedMessage) {
-        scene.showAccessDeniedMessage(`Set name to: ${name}.frenguin.eth!`);
-      }
-    }
-  };
-
-  // Add a useEffect to update the player label when userSubdomain changes
-  useEffect(() => {
-    if (!gameInstanceRef.current || !userSubdomain) return;
-
-    const scene = gameInstanceRef.current.scene.getScene(
-      "MainScene"
-    ) as GameScene;
-    if (scene && scene.playerLabel) {
-      scene.playerLabel.setText(`${userSubdomain}.frenguin.eth`);
-    }
-  }, [userSubdomain]);
 
   if (!address) {
     return <div>Please connect your wallet to play</div>;
@@ -1371,6 +1375,40 @@ export default function GameWorld() {
   return (
     <div className="w-full h-full absolute inset-0 overflow-hidden">
       <div ref={gameRef} className="w-full h-full" />
+
+      {/* Refresh subdomain button */}
+      <button
+        className="absolute top-4 right-4 bg-blue-600 bg-opacity-80 text-white px-3 py-2 rounded-lg flex items-center space-x-1 hover:bg-blue-500 z-50"
+        onClick={() => {
+          fetchUserSubdomain();
+
+          // Show a feedback message in-game
+          if (gameInstanceRef.current) {
+            const scene = gameInstanceRef.current.scene.getScene(
+              "MainScene"
+            ) as GameScene;
+            if (scene && scene.showAccessDeniedMessage) {
+              scene.showAccessDeniedMessage("Refreshing your ENS subdomain...");
+            }
+          }
+        }}
+      >
+        <svg
+          className="w-4 h-4"
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+          xmlns="http://www.w3.org/2000/svg"
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth="2"
+            d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+          ></path>
+        </svg>
+        <span>Refresh Name</span>
+      </button>
 
       {/* ENS Registration Modal */}
       {showEnsRegistration && (
@@ -1381,8 +1419,8 @@ export default function GameWorld() {
             </h2>
 
             <p className="text-gray-300 mb-6 font-pixel">
-              Create your own personalized .frenguin.eth name that will show up
-              in-game below your character!
+              Create your own personalized name that will show up in-game below
+              your character!
             </p>
 
             <div className="mb-6">
