@@ -13,6 +13,7 @@ import { v4 as uuidv4 } from "uuid";
 // Define the context type
 type AgeVerificationContextType = {
   isAdult: boolean | null;
+  gender: string | null;
   isVerifying: boolean;
   verificationId: string | null;
   startVerification: () => void;
@@ -22,6 +23,7 @@ type AgeVerificationContextType = {
 // Create context with default values
 const AgeVerificationContext = createContext<AgeVerificationContextType>({
   isAdult: null,
+  gender: null,
   isVerifying: false,
   verificationId: null,
   startVerification: () => {},
@@ -33,11 +35,13 @@ export const useAgeVerification = () => useContext(AgeVerificationContext);
 
 // Session storage keys
 const AGE_VERIFICATION_KEY = "club-frenguin-age-verification";
+const GENDER_KEY = "club-frenguin-gender";
 const VERIFICATION_ID_KEY = "club-frenguin-verification-id";
 
 export function AgeVerificationProvider({ children }: { children: ReactNode }) {
   const { address } = useAccount();
   const [isAdult, setIsAdult] = useState<boolean | null>(null);
+  const [gender, setGender] = useState<string | null>(null);
   const [isVerifying, setIsVerifying] = useState(false);
   const [verificationId, setVerificationId] = useState<string | null>(null);
 
@@ -52,6 +56,14 @@ export function AgeVerificationProvider({ children }: { children: ReactNode }) {
       setIsAdult(storedVerification === "true");
     } else {
       setIsAdult(null);
+    }
+
+    // Load gender from session storage
+    const storedGender = sessionStorage.getItem(`${GENDER_KEY}-${address}`);
+    if (storedGender) {
+      setGender(storedGender);
+    } else {
+      setGender(null);
     }
   }, [address]);
 
@@ -70,17 +82,26 @@ export function AgeVerificationProvider({ children }: { children: ReactNode }) {
     if (!address) return;
 
     setIsAdult(null);
+    setGender(null);
     setIsVerifying(false);
     setVerificationId(null);
     sessionStorage.removeItem(`${AGE_VERIFICATION_KEY}-${address}`);
+    sessionStorage.removeItem(`${GENDER_KEY}-${address}`);
     sessionStorage.removeItem(VERIFICATION_ID_KEY);
   };
 
   // Function to handle successful verification
-  const handleVerificationSuccess = (verified: boolean) => {
+  const handleVerificationSuccess = (
+    verified: boolean,
+    userGender?: string
+  ) => {
     if (!address) return;
 
     setIsAdult(verified);
+    if (userGender) {
+      setGender(userGender);
+      sessionStorage.setItem(`${GENDER_KEY}-${address}`, userGender);
+    }
     setIsVerifying(false);
     sessionStorage.setItem(
       `${AGE_VERIFICATION_KEY}-${address}`,
@@ -112,7 +133,7 @@ export function AgeVerificationProvider({ children }: { children: ReactNode }) {
 
         if (data.verified && isMounted) {
           console.log("Verification successful!");
-          handleVerificationSuccess(true);
+          handleVerificationSuccess(true, data.gender);
         }
       } catch (error) {
         console.error("Error checking verification status:", error);
@@ -136,8 +157,11 @@ export function AgeVerificationProvider({ children }: { children: ReactNode }) {
 
     // Define a global callback function that Self can call
     // @ts-ignore - This is intentionally added to the window object
-    window.onSelfVerificationComplete = (result: { isValid: boolean }) => {
-      handleVerificationSuccess(result.isValid);
+    window.onSelfVerificationComplete = (result: {
+      isValid: boolean;
+      gender?: string;
+    }) => {
+      handleVerificationSuccess(result.isValid, result.gender);
     };
 
     return () => {
@@ -150,6 +174,7 @@ export function AgeVerificationProvider({ children }: { children: ReactNode }) {
     <AgeVerificationContext.Provider
       value={{
         isAdult,
+        gender,
         isVerifying,
         verificationId,
         startVerification,

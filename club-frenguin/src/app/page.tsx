@@ -14,7 +14,8 @@ import Image from "next/image";
 export default function Home() {
   const { address } = useAccount();
   const { connect } = useConnect();
-  const { isAdult, isVerifying, startVerification } = useAgeVerification();
+  const { isAdult, gender, isVerifying, startVerification } =
+    useAgeVerification();
   const [currentRoom, setCurrentRoom] = useState<string>("general");
   const [showingWelcome, setShowingWelcome] = useState(true);
 
@@ -121,6 +122,11 @@ export default function Home() {
             <span className="mr-1 text-lg">✓</span>
             <span className="font-medium">Age Verified</span>
           </div>
+          {gender && (
+            <div className="flex items-center bg-purple-500 bg-opacity-70 text-white px-2 py-1 rounded-full shadow-md mt-2">
+              <span className="font-medium">Gender: {gender}</span>
+            </div>
+          )}
         </div>
       )}
 

@@ -20,6 +20,7 @@ export default function SelfVerificationQR() {
       userId: verificationId, // This is used to track verification status
       disclosures: {
         minimumAge: 18, // Only verify if user is 18+
+        gender: true, // Also verify gender
       },
       //   devMode: process.env.NODE_ENV === "development",
     } as Partial<SelfApp>).build();
@@ -35,12 +36,15 @@ export default function SelfVerificationQR() {
     <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-70 backdrop-blur-sm z-50">
       <div className="bg-black bg-opacity-90 p-8 rounded-xl shadow-2xl border-4 border-purple-600 max-w-md w-full">
         <h2 className="text-2xl font-bold mb-4 text-center text-purple-400">
-          Scan QR Code to Verify Age
+          Scan QR Code to Verify
         </h2>
         <p className="mb-6 text-center text-white">
-          Use the Self app to scan this QR code. You must be 18+ to access all
-          areas of Club Frenguin.
+          Use the Self app to scan this QR code. This will verify:
         </p>
+        <ul className="list-disc pl-8 mb-6 text-white">
+          <li className="mb-2">You are 18+ years old</li>
+          <li className="mb-2">Your gender information</li>
+        </ul>
         <div className="flex justify-center bg-white p-4 rounded-lg">
           <SelfQRcodeWrapper
             selfApp={selfApp}
