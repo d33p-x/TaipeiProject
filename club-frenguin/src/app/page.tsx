@@ -3,7 +3,6 @@
 import { useAccount } from "wagmi";
 import { useAgeVerification } from "@/providers/AgeVerificationProvider";
 import WalletConnect from "@/components/WalletConnect";
-import Avatar from "@/components/Avatar";
 import GameWorld from "@/components/GameWorld";
 import Chat from "@/components/Chat";
 import SelfVerificationQR from "@/components/SelfVerificationQR";
@@ -113,19 +112,16 @@ export default function Home() {
         </div>
       </div>
 
-      {/* Chat Overlay */}
-      <div className="absolute bottom-4 left-4 right-4 z-10">
+      {/* WoW-style Chat in bottom left */}
+      <div className="absolute bottom-4 left-4 z-10">
         {address && isAdult !== null && (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-2 pointer-events-auto">
-            <Chat room="general" />
-            {isAdult === true && <Chat room="adults-only" />}
-          </div>
+          <Chat room={currentRoom === "general" ? "general" : "adults-only"} />
         )}
       </div>
 
       {/* Footer */}
       <div className="absolute bottom-0 left-0 right-0 z-10 text-center text-white text-xs py-1 bg-black bg-opacity-50">
-        <p>Club Frenguin - ETH Global Hackathon Project 2023</p>
+        <p>Club Frenguin - ETH Global Hackathon Project 2025</p>
       </div>
 
       {/* Verification QR Modal */}

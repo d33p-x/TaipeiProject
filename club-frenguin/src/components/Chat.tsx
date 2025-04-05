@@ -1,200 +1,205 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useAccount } from "wagmi";
-import { io, Socket } from "socket.io-client";
 
-type ChatMessage = {
-  id: string;
-  sender: string;
-  displayName: string;
-  message: string;
+interface ChatProps {
   room: string;
-  timestamp: number;
+}
+
+// Simple mock data for demo purposes
+const mockMessages = {
+  general: [
+    { id: 1, sender: "Club Bot", message: "Welcome to Club Frenguin!" },
+    {
+      id: 2,
+      sender: "0x1234...abcd",
+      message: "Hey everyone, what's up?",
+    },
+    {
+      id: 3,
+      sender: "0xabcd...5678",
+      message: "Just exploring this cool virtual world!",
+    },
+  ],
+  "adults-only": [
+    {
+      id: 1,
+      sender: "Club Bot",
+      message: "Welcome to the Adults Only lounge!",
+    },
+    {
+      id: 2,
+      sender: "0xdef1...2345",
+      message: "This is where all the cool adults hang out.",
+    },
+  ],
 };
 
-export default function Chat({ room = "general" }: { room?: string }) {
+export default function Chat({ room }: ChatProps) {
   const { address } = useAccount();
-  const [message, setMessage] = useState("");
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [connected, setConnected] = useState(false);
-  const socketRef = useRef<Socket | null>(null);
+  const [messages, setMessages] = useState(
+    mockMessages[room as keyof typeof mockMessages] || []
+  );
+  const [newMessage, setNewMessage] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const [lastSpeechBubbleId, setLastSpeechBubbleId] = useState<number | null>(
+    null
+  );
 
-  // Connect to socket server
-  useEffect(() => {
-    if (!address) return;
-
-    // For MLP, we'll simulate socket connectivity
-    // In a real implementation, we would connect to a real socket.io server
-    const mockSocket = {
-      on: (_event: string, callback: Function) => {
-        if (_event === "connect") {
-          setTimeout(() => {
-            setConnected(true);
-            callback();
-          }, 500);
-        }
-        if (_event === "chat-message") {
-          // We'll store this callback to simulate incoming messages
-          // @ts-ignore
-          mockSocket.chatCallback = callback;
-        }
-      },
-      emit: (_event: string, data: any) => {
-        if (_event === "send-message") {
-          const mockMessage = {
-            id: Math.random().toString(36).substring(2, 9),
-            sender: address,
-            displayName: `${address.slice(0, 6)}...${address.slice(-4)}`,
-            message: data.message,
-            room: data.room,
-            timestamp: Date.now(),
-          };
-
-          // Simulate receiving our own message after a short delay
-          setTimeout(() => {
-            // @ts-ignore
-            if (mockSocket.chatCallback) {
-              // @ts-ignore
-              mockSocket.chatCallback(mockMessage);
-            }
-          }, 200);
-
-          // Simulate receiving a response from another user
-          if (data.room === "general") {
-            setTimeout(() => {
-              const botMessages = [
-                "Welcome to Club Frenguin!",
-                "How are you doing today?",
-                "I love this place!",
-                "The weather is nice today.",
-                "Have you tried the adult room?",
-                "This is so cool!",
-                "I'm new here. What about you?",
-                "Hello there!",
-              ];
-
-              const botMessage = {
-                id: Math.random().toString(36).substring(2, 9),
-                sender: "0xbot",
-                displayName: "Club Bot",
-                message:
-                  botMessages[Math.floor(Math.random() * botMessages.length)],
-                room: data.room,
-                timestamp: Date.now(),
-              };
-
-              // @ts-ignore
-              if (mockSocket.chatCallback) {
-                // @ts-ignore
-                mockSocket.chatCallback(botMessage);
-              }
-            }, 2000);
-          }
-        }
-      },
-      disconnect: () => {
-        setConnected(false);
-      },
-    };
-
-    // @ts-ignore
-    socketRef.current = mockSocket;
-
-    // Connect to mock socket
-    // @ts-ignore
-    socketRef.current.on("connect", () => {
-      console.log("Connected to chat server");
-    });
-
-    // Listen for messages
-    // @ts-ignore
-    socketRef.current.on("chat-message", (message: ChatMessage) => {
-      if (message.room === room) {
-        setMessages((prevMessages) => [...prevMessages, message]);
-      }
-    });
-
-    return () => {
-      if (socketRef.current) {
-        // @ts-ignore
-        socketRef.current.disconnect();
-      }
-    };
-  }, [address, room]);
-
-  // Scroll to bottom when messages change
+  // Auto-scroll chat to bottom when new messages arrive
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSendMessage = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!message.trim() || !address || !socketRef.current) return;
+    if (!newMessage.trim() || !address) return;
 
-    // @ts-ignore
-    socketRef.current.emit("send-message", {
-      message,
-      room,
-    });
+    const newMsg = {
+      id: Date.now(),
+      sender: `${address.slice(0, 6)}...${address.slice(-4)}`,
+      message: newMessage.trim(),
+    };
 
-    setMessage("");
+    setMessages([...messages, newMsg]);
+    setNewMessage("");
+
+    // Set this message to be displayed as a speech bubble
+    setLastSpeechBubbleId(newMsg.id);
+
+    console.log("Dispatching chat event with message:", newMessage.trim());
+
+    try {
+      // Dispatch a direct chat message event for the Phaser scene
+      const directChatEvent = new CustomEvent("direct_chat_message", {
+        detail: {
+          message: newMessage.trim(),
+          room,
+          sender: `${address.slice(0, 6)}...${address.slice(-4)}`,
+          id: newMsg.id,
+        },
+        bubbles: true,
+      });
+      window.dispatchEvent(directChatEvent);
+
+      // Method 1: Using CustomEvent constructor
+      const chatEvent = new CustomEvent("chat_message", {
+        detail: {
+          message: newMessage.trim(),
+          room,
+          sender: `${address.slice(0, 6)}...${address.slice(-4)}`,
+          id: newMsg.id,
+        },
+        bubbles: true,
+      });
+      window.dispatchEvent(chatEvent);
+
+      // Method 2: Using document.createEvent (for older browsers)
+      const backupEvent = document.createEvent("CustomEvent");
+      backupEvent.initCustomEvent("chat_message_backup", true, true, {
+        message: newMessage.trim(),
+        room,
+        sender: `${address.slice(0, 6)}...${address.slice(-4)}`,
+        id: newMsg.id,
+      });
+      window.dispatchEvent(backupEvent);
+
+      console.log("Chat events dispatched successfully");
+    } catch (error) {
+      console.error("Error dispatching chat event:", error);
+    }
   };
 
-  if (!address) {
-    return <div>Please connect your wallet to chat</div>;
-  }
-
   return (
-    <div className="flex flex-col h-64 border rounded-lg overflow-hidden">
-      <div className="bg-gray-200 px-4 py-2 font-semibold">
-        {room === "general" ? "General Chat" : "Adults Only Chat"}
-        <span
-          className={`ml-2 h-2 w-2 rounded-full inline-block ${
-            connected ? "bg-green-500" : "bg-red-500"
-          }`}
-        ></span>
-      </div>
-
-      <div className="flex-1 p-4 overflow-y-auto bg-white">
-        {messages.map((msg) => (
-          <div
-            key={msg.id}
-            className={`mb-2 ${msg.sender === address ? "text-right" : ""}`}
-          >
-            <span className="text-xs text-gray-500">{msg.displayName}:</span>
-            <div
-              className={`px-3 py-2 rounded-lg inline-block max-w-xs ${
-                msg.sender === address
-                  ? "bg-blue-500 text-white"
-                  : "bg-gray-200 text-gray-800"
-              }`}
-            >
-              {msg.message}
+    <div className="chat-container">
+      {/* WoW-style chat log in bottom left */}
+      <div className="bg-black bg-opacity-60 rounded-md p-2 max-w-xs text-white text-xs h-32 overflow-y-auto flex flex-col">
+        <div className="flex-1 overflow-y-auto scrollbar-thin">
+          {messages.map((msg) => (
+            <div key={msg.id} className="mb-1">
+              <span
+                className={`font-semibold ${
+                  msg.sender === "Club Bot"
+                    ? "text-yellow-400"
+                    : "text-blue-300"
+                }`}
+              >
+                {msg.sender}:
+              </span>{" "}
+              <span>{msg.message}</span>
             </div>
-          </div>
-        ))}
-        <div ref={messagesEndRef} />
-      </div>
+          ))}
+          <div ref={messagesEndRef} />
+        </div>
 
-      <form onSubmit={handleSubmit} className="border-t flex">
-        <input
-          type="text"
-          value={message}
-          onChange={(e) => setMessage(e.target.value)}
-          placeholder="Type a message..."
-          className="flex-1 px-4 py-2 focus:outline-none"
-          disabled={!connected}
-        />
-        <button
-          type="submit"
-          className="bg-blue-500 text-white px-4 py-2 disabled:bg-gray-300"
-          disabled={!connected || !message.trim()}
-        >
-          Send
-        </button>
-      </form>
+        <form onSubmit={handleSendMessage} className="mt-1 flex">
+          <input
+            type="text"
+            value={newMessage}
+            onChange={(e) => setNewMessage(e.target.value)}
+            placeholder="Type a message..."
+            className="flex-1 bg-gray-800 text-white text-xs px-2 py-1 rounded-l outline-none"
+          />
+          <button
+            type="submit"
+            className="bg-blue-600 text-white text-xs rounded-r px-2"
+          >
+            Send
+          </button>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+// Create a separate SpeechBubble component that can be exported
+export function SpeechBubble({
+  message,
+  senderX,
+  senderY,
+}: {
+  message: string;
+  senderX: number;
+  senderY: number;
+}) {
+  return (
+    <div
+      className="absolute bg-white border-2 border-black rounded-lg p-2 shadow-lg text-sm max-w-xs z-50"
+      style={{
+        left: senderX,
+        top: senderY - 80, // Position higher above the player
+        transform: "translateX(-50%)",
+        maxWidth: "200px",
+        minWidth: "80px",
+        textAlign: "center",
+        fontWeight: "bold",
+        boxShadow: "0 4px 6px rgba(0, 0, 0, 0.3)",
+      }}
+    >
+      <div className="relative">
+        {message}
+        {/* Triangle pointer at bottom */}
+        <div
+          className="absolute w-0 h-0 border-l-8 border-r-8 border-t-8 border-l-transparent border-r-transparent border-t-white"
+          style={{
+            bottom: "-8px",
+            left: "50%",
+            transform: "translateX(-50%)",
+            filter: "drop-shadow(0 2px 1px rgba(0, 0, 0, 0.3))",
+          }}
+        ></div>
+        {/* Border triangle for outline effect */}
+        <div
+          className="absolute w-0 h-0 border-l-10 border-r-10 border-t-10 border-l-transparent border-r-transparent border-t-black"
+          style={{
+            bottom: "-11px",
+            left: "50%",
+            transform: "translateX(-50%)",
+            zIndex: -1,
+          }}
+        ></div>
+      </div>
     </div>
   );
 }

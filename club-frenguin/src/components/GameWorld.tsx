@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useAccount } from "wagmi";
 import { useAgeVerification } from "@/providers/AgeVerificationProvider";
+import { SpeechBubble } from "./Chat";
 
 // Define game types
 type GameScene = Phaser.Scene & {
@@ -27,12 +28,66 @@ type GameScene = Phaser.Scene & {
   nearExit?: boolean;
 };
 
+type SpeechBubbleMessage = {
+  id: number;
+  message: string;
+  timestamp: number;
+};
+
 export default function GameWorld() {
   const gameRef = useRef<HTMLDivElement>(null);
   const gameInstanceRef = useRef<Phaser.Game | null>(null);
   const { address } = useAccount();
   const { isAdult } = useAgeVerification();
   const [currentRoom, setCurrentRoom] = useState<string>("general");
+  const [activeSpeechBubble, setActiveSpeechBubble] =
+    useState<SpeechBubbleMessage | null>(null);
+  const [playerPosition, setPlayerPosition] = useState({ x: 0, y: 0 });
+
+  // Listen for chat messages to display as speech bubbles
+  useEffect(() => {
+    const handleChatMessage = (e: CustomEvent) => {
+      const { message, id } = e.detail;
+      console.log("Chat message received:", message); // Debug log
+
+      // Only show speech bubbles for the current player's messages
+      setActiveSpeechBubble({
+        id,
+        message,
+        timestamp: Date.now(),
+      });
+
+      // Hide speech bubble after 8 seconds
+      setTimeout(() => {
+        setActiveSpeechBubble(null);
+      }, 8000);
+    };
+
+    // Also handle backup event
+    const handleBackupChatMessage = (e: CustomEvent) => {
+      console.log("Backup chat event received");
+      handleChatMessage(e);
+    };
+
+    // Add event listeners with proper type casting
+    window.addEventListener("chat_message", handleChatMessage as EventListener);
+    window.addEventListener(
+      "chat_message_backup",
+      handleBackupChatMessage as EventListener
+    );
+
+    // Clean up on unmount
+    return () => {
+      window.removeEventListener(
+        "chat_message",
+        handleChatMessage as EventListener
+      );
+      window.removeEventListener(
+        "chat_message_backup",
+        handleBackupChatMessage as EventListener
+      );
+    };
+  }, [playerPosition]);
 
   useEffect(() => {
     // Clear the container before creating a new game instance to prevent doubling
@@ -64,8 +119,8 @@ export default function GameWorld() {
             this.load.image("player", "/assets/player.png");
             // Load map tiles and objects
             this.load.image("grass", "/assets/grass.png");
-            this.load.image("wall", "/assets/placeholder.html");
-            this.load.image("door", "/assets/placeholder.html");
+            this.load.image("wall", "/assets/wall.png");
+            this.load.image("door", "/assets/door.png");
           }
 
           create() {
@@ -247,6 +302,62 @@ export default function GameWorld() {
 
             // Setup keyboard input
             scene.cursors = this.input.keyboard?.createCursorKeys();
+
+            // Add direct game scene method to show speech bubbles
+            // This allows creating speech bubbles directly in the Phaser scene
+            const showSpeechBubble = (text: string) => {
+              const bubble = this.add.graphics();
+              // White background with black border
+              bubble.fillStyle(0xffffff, 1);
+              bubble.lineStyle(2, 0x000000, 1);
+
+              // Create rounded rectangle for bubble
+              bubble.fillRoundedRect(0, 0, 200, 50, 10);
+              bubble.strokeRoundedRect(0, 0, 200, 50, 10);
+
+              // Add text
+              const message = this.add
+                .text(100, 25, text, {
+                  fontFamily: "Arial",
+                  fontSize: "14px",
+                  color: "#000000",
+                  align: "center",
+                  wordWrap: { width: 180 },
+                })
+                .setOrigin(0.5);
+
+              // Create container to group bubble and text
+              const container = this.add.container(
+                scene.playerSprite!.x,
+                scene.playerSprite!.y - 100 // Positioned higher above the player
+              );
+              container.add([bubble, message]);
+
+              // Follow player
+              this.time.addEvent({
+                delay: 50,
+                callback: () => {
+                  if (scene.playerSprite) {
+                    container.x = scene.playerSprite.x;
+                    container.y = scene.playerSprite.y - 100;
+                  }
+                },
+                repeat: 100,
+              });
+
+              // Auto remove after 5 seconds
+              this.time.delayedCall(5000, () => {
+                container.destroy();
+              });
+            };
+
+            // Add direct chat message listener to scene
+            window.addEventListener("direct_chat_message", ((
+              e: CustomEvent
+            ) => {
+              const { message } = e.detail;
+              showSpeechBubble(message);
+            }) as EventListener);
           }
 
           switchRoom(roomName: string) {
@@ -322,6 +433,25 @@ export default function GameWorld() {
             // Update label position to follow sprite (BELOW the player)
             scene.playerLabel.x = scene.playerSprite.x;
             scene.playerLabel.y = scene.playerSprite.y + 30;
+
+            // Update player position for speech bubbles - fixed positioning logic
+            if (scene.playerSprite) {
+              // Get the canvas element
+              const canvas = this.sys.game.canvas;
+              // Get the position of the canvas on the page
+              const canvasRect = canvas.getBoundingClientRect();
+
+              // Convert game coordinates to screen coordinates
+              // Use the ratio of the displayed canvas size to the internal game size
+              const scaleX = canvasRect.width / width;
+              const scaleY = canvasRect.height / height;
+
+              const screenX = canvasRect.left + scene.playerSprite.x * scaleX;
+              const screenY = canvasRect.top + scene.playerSprite.y * scaleY;
+
+              // Update position state for speech bubble positioning
+              setPlayerPosition({ x: screenX, y: screenY });
+            }
 
             // Check if player is near the door or exit
             if (scene.doorZone && scene.currentRoom === "general") {
