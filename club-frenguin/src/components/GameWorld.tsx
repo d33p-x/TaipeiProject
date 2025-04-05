@@ -64,6 +64,7 @@ export default function GameWorld() {
   const [activeSpeechBubble, setActiveSpeechBubble] =
     useState<SpeechBubbleMessage | null>(null);
   const [playerPosition, setPlayerPosition] = useState({ x: 0, y: 0 });
+  const [userSubdomain, setUserSubdomain] = useState<string | null>(null);
 
   // Track active timers to ensure proper cleanup
   const activeTimers = useRef<Phaser.Time.TimerEvent[]>([]);
@@ -76,36 +77,89 @@ export default function GameWorld() {
     "idle" | "loading" | "success" | "error"
   >("idle");
   const [statusMessage, setStatusMessage] = useState("");
-  const [ensName, setEnsName] = useState<string | null>(() => {
-    // Initialize from localStorage if available
-    if (typeof window !== "undefined") {
-      const storedName = localStorage.getItem(`ens-name-${address}`);
-      return storedName || null;
-    }
-    return null;
-  });
 
   // Contract addresses
   const registryAddress = "0x257ed5b68c2a32273db8490e744028a63acc771f";
-  const registrarAddress = "0xBC786f759Ba534Ea365B4637EFd88350EE411E3a";
+  const registrarAddress = "0x38Fc7Af48B92F00AB5508d88648FF9a4C9D89b5E";
 
-  // Optimize event listening to use fewer handlers
+  // Add function to fetch user's subdomain
+  const fetchUserSubdomain = async () => {
+    if (!address) return;
+
+    try {
+      // Connect to Base
+      // @ts-ignore - ethereum is injected by MetaMask
+      const provider = new ethers.BrowserProvider(window.ethereum);
+
+      // Use the addressToLabel function to directly get the subdomain
+      const registrarAbi = [
+        "function addressToLabel(address) external view returns (string)",
+      ];
+
+      const registrarContract = new ethers.Contract(
+        registrarAddress,
+        registrarAbi,
+        provider
+      );
+
+      // Call the addressToLabel function to get the user's subdomain
+      const label = await registrarContract.addressToLabel(address);
+
+      // If a label was found, set it as the user's subdomain
+      if (label && label !== "") {
+        console.log("Found ENS subdomain for address:", label);
+        setUserSubdomain(label);
+      } else {
+        console.log("No subdomain found for address");
+        // Clear any previously set subdomain
+        setUserSubdomain(null);
+      }
+    } catch (error) {
+      console.error("Error fetching user subdomain:", error);
+    }
+  };
+
+  // Call the function when component mounts or address changes
   useEffect(() => {
-    // One unified handler for chat messages to reduce event listeners
+    if (address) {
+      // Fetch on initial load
+      fetchUserSubdomain();
+
+      // Set up a periodic refresh every 30 seconds to catch any changes
+      const refreshInterval = setInterval(() => {
+        fetchUserSubdomain();
+      }, 30000);
+
+      // Also fetch on window focus (when user comes back to the tab)
+      const handleFocus = () => fetchUserSubdomain();
+      window.addEventListener("focus", handleFocus);
+
+      // Clean up
+      return () => {
+        clearInterval(refreshInterval);
+        window.removeEventListener("focus", handleFocus);
+      };
+    }
+  }, [address]);
+
+  // Remove all ENS name effects
+  useEffect(() => {
+    // Optimize event listening to use fewer handlers
     const handleChatEvent = (e: CustomEvent) => {
       const { message, id } = e.detail;
 
-      // Only show speech bubbles for the current player's messages
-      setActiveSpeechBubble({
-        id,
-        message,
-        timestamp: Date.now(),
-      });
+      // Don't set activeSpeechBubble - only use the in-game speech bubbles
+      // The in-game showSpeechBubble function will handle this directly
 
-      // Hide speech bubble after 5 seconds instead of 8 for better performance
-      setTimeout(() => {
-        setActiveSpeechBubble(null);
-      }, 5000);
+      // We no longer need this React-based speech bubble
+      // setActiveSpeechBubble({
+      //   id,
+      //   message,
+      //   timestamp: Date.now(),
+      // });
+
+      // No need for a separate timeout to clear the bubble
+      // The in-game system already handles cleanup
     };
 
     // Add a single event listener
@@ -147,88 +201,6 @@ export default function GameWorld() {
       );
     };
   }, []);
-
-  // Check if user already has an ENS name when component loads
-  useEffect(() => {
-    const checkExistingEns = async () => {
-      if (!address) return;
-
-      try {
-        console.log("Checking for existing ENS name for:", address);
-
-        // @ts-ignore - ethereum is injected by MetaMask
-        const provider = new ethers.BrowserProvider(window.ethereum);
-
-        // First, check if the user is verified using the registrar contract
-        const registrarContract = new ethers.Contract(
-          registrarAddress,
-          ["function isVerified(address user) external view returns (bool)"],
-          provider
-        );
-
-        const isVerifiedStatus = await registrarContract.isVerified(address);
-        console.log("Verification status:", isVerifiedStatus);
-
-        if (isVerifiedStatus) {
-          // If verified, query the registry contract to find the user's ENS name
-          // This requires querying the events from the registry contract
-
-          // We'll query for Transfer events where the recipient is the user's address
-          // This is a simplified approach - in production, you might want to use a subgraph
-          const abi = [
-            "event Transfer(address indexed from, address indexed to, uint256 indexed tokenId)",
-            "function tokenURI(uint256 tokenId) view returns (string)",
-            "function getApproved(uint256 tokenId) view returns (address)",
-          ];
-
-          const registryContract = new ethers.Contract(
-            registryAddress,
-            abi,
-            provider
-          );
-
-          try {
-            // This is a workaround to directly set the ENS name for testing
-            // since getting the actual name from events is complex
-
-            // In a production app, you would query for Transfer events
-            // and decode the tokenId to get the actual name
-
-            // For now, manually set a name to demonstrate the functionality
-            setEnsName("yourname"); // Replace with actual ENS retrieval logic
-
-            console.log("Found ENS name for user:", "yourname");
-
-            // Update the player label immediately if the game scene exists
-            if (gameInstanceRef.current) {
-              const scene = gameInstanceRef.current.scene.getScene(
-                "MainScene"
-              ) as GameScene;
-              if (scene && scene.playerLabel) {
-                scene.playerLabel.setText("yourname.frenguin.eth");
-              }
-            }
-          } catch (error) {
-            console.error("Error retrieving ENS name:", error);
-          }
-        }
-      } catch (error) {
-        console.error("Error checking ENS status:", error);
-      }
-    };
-
-    checkExistingEns();
-  }, [address, registrarAddress, registryAddress]);
-
-  // Update ENS name when address changes
-  useEffect(() => {
-    if (typeof window !== "undefined" && address) {
-      const storedName = localStorage.getItem(`ens-name-${address}`);
-      if (storedName) {
-        setEnsName(storedName);
-      }
-    }
-  }, [address]);
 
   useEffect(() => {
     // Clear the container before creating a new game instance to prevent doubling
@@ -317,7 +289,6 @@ export default function GameWorld() {
             scene.nearExit = false;
             scene.nearKidsDoor = false;
             scene.nearKidsExit = false;
-            scene.nearEnsBooth = false;
 
             // Set up camera
             this.cameras.main.setBackgroundColor("#000000");
@@ -396,6 +367,7 @@ export default function GameWorld() {
             // Add invisible zone for ENS booth interaction
             scene.ensBoothZone = this.add.zone(width * 0.65, 150, 220, 220);
             scene.ensBoothZone.setOrigin(0.5);
+            scene.nearEnsBooth = false;
 
             // Add door to adult room visual (no longer interactive)
             const adultRoomDoor = this.add
@@ -621,26 +593,27 @@ export default function GameWorld() {
             // Player direction state
             scene.playerDirection = "down"; // Default facing down
 
-            // Add player label (wallet address) - BELOW the avatar
+            // Add player label (wallet address or ENS name) - BELOW the avatar
             scene.playerLabel = this.add
               .text(
                 width / 2,
                 height / 2 + 45, // Move further down from 30 to 45
-                ensName
-                  ? `${ensName}.frenguin.eth`
-                  : address
-                  ? `${address.slice(0, 6)}...${address.slice(-4)}`
+                address
+                  ? userSubdomain
+                    ? `${userSubdomain}.frenguin.eth`
+                    : `${address.slice(0, 6)}...${address.slice(-4)}`
                   : "Player",
                 {
                   fontFamily: "Arial",
-                  fontSize: "12px",
+                  fontSize: "16px", // Increase text size for better visibility
                   color: "#FFFFFF",
-                  padding: { x: 3, y: 2 },
+                  padding: { x: 4, y: 2 },
                   stroke: "#000000",
-                  strokeThickness: 3,
+                  strokeThickness: 5, // Thicker stroke for better visibility
                 }
               )
-              .setOrigin(0.5, 0); // Changed from 0.5, 1 to 0.5, 0 for alignment
+              .setOrigin(0.5, 0)
+              .setDepth(10000); // Much higher depth to ensure it's on top
 
             // Setup keyboard input
             scene.cursors = this.input.keyboard?.createCursorKeys();
@@ -850,6 +823,14 @@ export default function GameWorld() {
               scene.currentRoom = "adult";
               setCurrentRoom("adults-only");
 
+              // Make sure the player label is visible and positioned correctly
+              if (scene.playerLabel && scene.playerSprite) {
+                scene.playerLabel.x = scene.playerSprite.x;
+                scene.playerLabel.y = scene.playerSprite.y + 45;
+                scene.playerLabel.setVisible(true);
+                scene.playerLabel.setDepth(10000);
+              }
+
               // Notify the application about room change (for parent components)
               window.postMessage(
                 { type: "ROOM_CHANGE", room: "adults-only" },
@@ -869,6 +850,14 @@ export default function GameWorld() {
               // Update current room
               scene.currentRoom = "kids";
               setCurrentRoom("kids-only");
+
+              // Make sure the player label is visible and positioned correctly
+              if (scene.playerLabel && scene.playerSprite) {
+                scene.playerLabel.x = scene.playerSprite.x;
+                scene.playerLabel.y = scene.playerSprite.y + 45;
+                scene.playerLabel.setVisible(true);
+                scene.playerLabel.setDepth(10000);
+              }
 
               // Notify the application about room change
               window.postMessage(
@@ -897,6 +886,14 @@ export default function GameWorld() {
               // Update current room
               scene.currentRoom = "general";
               setCurrentRoom("general");
+
+              // Make sure the player label is visible and positioned correctly
+              if (scene.playerLabel && scene.playerSprite) {
+                scene.playerLabel.x = scene.playerSprite.x;
+                scene.playerLabel.y = scene.playerSprite.y + 45;
+                scene.playerLabel.setVisible(true);
+                scene.playerLabel.setDepth(10000);
+              }
 
               // Notify the application about room change
               window.postMessage({ type: "ROOM_CHANGE", room: "general" }, "*");
@@ -978,9 +975,16 @@ export default function GameWorld() {
               scene.playerDirection = direction;
             }
 
-            // Update label position to follow sprite (BELOW the player)
-            scene.playerLabel.x = scene.playerSprite.x;
-            scene.playerLabel.y = scene.playerSprite.y + 30;
+            // Update player label position to follow sprite
+            if (scene.playerLabel && scene.playerSprite) {
+              // Position the label below the player sprite
+              scene.playerLabel.x = scene.playerSprite.x;
+              scene.playerLabel.y = scene.playerSprite.y + 45; // Position below player
+
+              // Ensure the label is visible and on top
+              scene.playerLabel.setVisible(true);
+              scene.playerLabel.setDepth(10000);
+            }
 
             // Update position state for speech bubble positioning - less frequently
             // Only update every 5th frame to reduce performance impact
@@ -1241,99 +1245,124 @@ export default function GameWorld() {
   // Add function to handle ENS registration
   const handleRegisterSubdomain = async () => {
     if (!subdomainName || !address) {
-      setStatusMessage("Please enter a subdomain name");
+      setStatusMessage("Please enter a subdomain name.");
       return;
     }
 
+    setRegistrationStatus("loading");
+    setStatusMessage("Registering your subdomain...");
+
     try {
-      setRegistrationStatus("loading");
-      setStatusMessage("Preparing registration...");
-
-      // Get verification signature from backend
-      const timestamp = Math.floor(Date.now() / 1000);
-
-      // Call our API endpoint to get the verification signature
-      const response = await fetch("/api/ens-verify", {
+      // First, get verification signature from our API
+      const timestamp = Math.floor(Date.now() / 1000); // Current timestamp in seconds
+      const verificationResponse = await fetch("/api/ens-verify", {
         method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
         body: JSON.stringify({ address, timestamp }),
-        headers: { "Content-Type": "application/json" },
       });
 
-      if (!response.ok) {
+      if (!verificationResponse.ok) {
         throw new Error("Failed to get verification signature");
       }
 
-      const { signature } = await response.json();
+      const { signature } = await verificationResponse.json();
 
-      setStatusMessage("Registering on blockchain...");
+      // Connect to Base
+      // @ts-ignore - ethereum is injected by MetaMask
+      const provider = new ethers.BrowserProvider(window.ethereum);
+      const signer = await provider.getSigner();
 
-      // Connect to the wallet and contract using ethers v6 syntax
-      try {
-        // Get provider and signer using ethers v6 syntax
-        // @ts-ignore - ethereum is injected by MetaMask
-        const provider = new ethers.BrowserProvider(window.ethereum);
-        const signer = await provider.getSigner();
+      // Registrar ABI with the full function signature
+      const registrarAbi = [
+        "function register(string calldata label, address owner, uint256 timestamp, bytes memory signature) external",
+      ];
 
-        // Simple L2Registrar ABI with just the register function
-        const abi = [
-          "function register(string calldata label, address owner, uint256 timestamp, bytes memory signature) external",
-        ];
+      // Create contract instance
+      const registrarContract = new ethers.Contract(
+        registrarAddress,
+        registrarAbi,
+        signer
+      );
 
-        const contract = new ethers.Contract(registrarAddress, abi, signer);
+      // Register the subdomain with all required parameters
+      const tx = await registrarContract.register(
+        subdomainName,
+        address,
+        timestamp,
+        signature
+      );
+      setStatusMessage("Transaction submitted. Waiting for confirmation...");
 
-        // Call the register function on the contract
-        setStatusMessage("Confirming transaction...");
-        const tx = await contract.register(
-          subdomainName,
-          address,
-          timestamp,
-          signature
-        );
+      // Wait for confirmation
+      await tx.wait();
 
-        setStatusMessage("Transaction submitted! Waiting for confirmation...");
-        await tx.wait();
+      // Registration successful
+      setRegistrationStatus("success");
+      setStatusMessage(
+        `Successfully registered ${subdomainName}.frenguin.eth!`
+      );
 
-        setRegistrationStatus("success");
-        setStatusMessage(
-          `Congratulations! ${subdomainName}.frenguin.eth is now yours!`
-        );
+      // Update the state with the new subdomain to display it immediately
+      setUserSubdomain(subdomainName);
 
-        // Save the ENS name to state
-        setEnsName(subdomainName);
+      // Refresh the user's subdomain from the blockchain
+      // in case other updates were made
+      setTimeout(() => {
+        fetchUserSubdomain();
+      }, 2000); // Wait a bit for the blockchain to update
 
-        // Save to localStorage for persistence
-        localStorage.setItem(`ens-name-${address}`, subdomainName);
-
-        // Update player label if it exists
-        if (gameInstanceRef.current) {
-          const scene = gameInstanceRef.current.scene.getScene(
-            "MainScene"
-          ) as GameScene;
-          if (scene && scene.playerLabel) {
-            scene.playerLabel.setText(`${subdomainName}.frenguin.eth`);
-          }
+      // Show success message in-game
+      if (gameInstanceRef.current) {
+        const scene = gameInstanceRef.current.scene.getScene(
+          "MainScene"
+        ) as GameScene;
+        if (scene && scene.showAccessDeniedMessage) {
+          scene.showAccessDeniedMessage(
+            `Success! Registered ${subdomainName}.frenguin.eth!`
+          );
         }
-
-        // Close the modal after success with a delay
-        setTimeout(() => {
-          setShowEnsRegistration(false);
-          setRegistrationStatus("idle");
-          setSubdomainName("");
-          setStatusMessage("");
-        }, 5000);
-      } catch (error: any) {
-        console.error("Blockchain error:", error);
-        setRegistrationStatus("error");
-        setStatusMessage(
-          `Transaction failed: ${error?.message || "Unknown error"}`
-        );
       }
+
+      // Close registration dialog after success
+      setTimeout(() => {
+        setShowEnsRegistration(false);
+        setStatusMessage("");
+        setRegistrationStatus("idle");
+        setSubdomainName("");
+      }, 3000);
     } catch (error) {
       console.error("Registration error:", error);
       setRegistrationStatus("error");
       setStatusMessage("Error registering subdomain. Please try again.");
     }
   };
+
+  // Remove methods that dealt with ENS name display
+  const setEnsNameOverride = (name: string) => {
+    // Simply show a success message
+    if (gameInstanceRef.current) {
+      const scene = gameInstanceRef.current.scene.getScene(
+        "MainScene"
+      ) as GameScene;
+      if (scene && scene.showAccessDeniedMessage) {
+        scene.showAccessDeniedMessage(`Set name to: ${name}.frenguin.eth!`);
+      }
+    }
+  };
+
+  // Add a useEffect to update the player label when userSubdomain changes
+  useEffect(() => {
+    if (!gameInstanceRef.current || !userSubdomain) return;
+
+    const scene = gameInstanceRef.current.scene.getScene(
+      "MainScene"
+    ) as GameScene;
+    if (scene && scene.playerLabel) {
+      scene.playerLabel.setText(`${userSubdomain}.frenguin.eth`);
+    }
+  }, [userSubdomain]);
 
   if (!address) {
     return <div>Please connect your wallet to play</div>;
@@ -1345,134 +1374,141 @@ export default function GameWorld() {
 
       {/* ENS Registration Modal */}
       {showEnsRegistration && (
-        <div
-          className="fixed inset-0 flex items-center justify-center z-50"
-          style={{
-            backgroundColor: "rgba(0,0,0,0.8)",
-            backdropFilter: "blur(4px)",
-          }}
-        >
-          <div className="bg-black border-4 border-yellow-600 p-8 rounded-lg max-w-md w-full shadow-2xl">
-            <h2 className="text-3xl font-bold mb-6 text-center text-yellow-400 font-pixel">
-              Register ENS Subdomain
+        <div className="fixed inset-0 flex items-center justify-center z-50 bg-black bg-opacity-70">
+          <div className="bg-gray-900 p-8 rounded-lg border-4 border-blue-500 w-full max-w-lg">
+            <h2 className="text-2xl font-pixel text-white mb-4">
+              Register Your ENS Subdomain
             </h2>
 
-            {registrationStatus === "success" ? (
-              <div className="text-center">
-                <div className="text-green-400 text-6xl mb-4">✓</div>
-                <p className="mb-6 text-white text-xl font-pixel">
-                  {statusMessage}
-                </p>
+            <p className="text-gray-300 mb-6 font-pixel">
+              Create your own personalized .frenguin.eth name that will show up
+              in-game below your character!
+            </p>
+
+            <div className="mb-6">
+              <div className="flex items-center mb-2">
+                <input
+                  type="text"
+                  className="bg-gray-800 text-white px-4 py-3 rounded-l border-2 border-blue-700 font-pixel text-lg w-full focus:outline-none focus:border-blue-500"
+                  placeholder="Enter subdomain name"
+                  value={subdomainName}
+                  onChange={(e) => setSubdomainName(e.target.value)}
+                />
+                <div className="bg-gray-700 px-3 py-3 text-gray-300 rounded-r border-y-2 border-r-2 border-blue-700 font-pixel text-lg">
+                  .frenguin.eth
+                </div>
               </div>
-            ) : registrationStatus === "error" ? (
-              <div className="text-center">
-                <div className="text-red-500 text-6xl mb-4">✗</div>
-                <p className="mb-6 text-white text-xl font-pixel">
+              <p className="text-sm text-gray-400 font-pixel">
+                Choose a name between 3-20 characters. Only letters, numbers,
+                and hyphens allowed.
+              </p>
+            </div>
+
+            <div className="mb-6">
+              <button
+                className={`w-full py-3 font-pixel text-white text-lg rounded ${
+                  registrationStatus === "loading"
+                    ? "bg-gray-600 cursor-not-allowed"
+                    : "bg-blue-600 hover:bg-blue-500"
+                }`}
+                onClick={handleRegisterSubdomain}
+                disabled={registrationStatus === "loading"}
+              >
+                {registrationStatus === "loading"
+                  ? "Registering..."
+                  : "Register"}
+              </button>
+
+              {statusMessage && (
+                <p
+                  className={`mt-4 text-center font-pixel ${
+                    registrationStatus === "error"
+                      ? "text-red-400"
+                      : registrationStatus === "success"
+                      ? "text-green-400"
+                      : "text-blue-300"
+                  }`}
+                >
                   {statusMessage}
                 </p>
+              )}
+            </div>
+
+            <div className="mb-6 bg-blue-900 p-6 rounded border-2 border-blue-700">
+              <p className="text-white text-lg font-pixel mb-4">
+                If your name is not registering correctly, you can manually set
+                it:
+              </p>
+              <div className="flex mb-4">
+                <input
+                  type="text"
+                  placeholder="Enter your subdomain"
+                  className="bg-gray-900 text-white px-4 py-3 rounded-l border-2 border-blue-700 font-pixel text-base w-full focus:outline-none focus:border-blue-500"
+                  value={subdomainName}
+                  onChange={(e) => setSubdomainName(e.target.value)}
+                />
                 <button
-                  className="px-6 py-3 bg-blue-600 text-white text-lg font-pixel rounded border-2 border-blue-500 hover:bg-blue-500 transition"
-                  onClick={() => setRegistrationStatus("idle")}
+                  className="px-4 py-2 bg-green-600 text-white text-base font-pixel rounded-r border-y-2 border-r-2 border-green-700 hover:bg-green-500"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    if (subdomainName) {
+                      setEnsNameOverride(subdomainName);
+                      setShowEnsRegistration(false);
+                    }
+                  }}
                 >
-                  Try Again
+                  Set
                 </button>
               </div>
-            ) : (
-              <>
-                <p className="mb-6 text-white text-xl font-pixel">
-                  Create your subdomain for Frenguin!
-                </p>
 
-                <div className="mb-6">
-                  <div className="flex items-center mb-4">
-                    <input
-                      type="text"
-                      value={subdomainName}
-                      onChange={(e) =>
-                        setSubdomainName(
-                          e.target.value
-                            .toLowerCase()
-                            .replace(/[^a-z0-9-]/g, "")
-                        )
-                      }
-                      placeholder="yourname"
-                      className="bg-gray-900 text-white px-4 py-3 rounded-l border-2 border-blue-700 font-pixel text-lg w-full focus:outline-none focus:border-blue-500"
-                    />
-                    <span className="bg-gray-800 text-gray-300 px-4 py-3 rounded-r border-y-2 border-r-2 border-blue-700 font-pixel text-lg">
-                      .frenguin.eth
-                    </span>
-                  </div>
-
-                  {statusMessage && (
-                    <p className="text-yellow-400 font-pixel mb-4">
-                      {statusMessage}
-                    </p>
-                  )}
-                </div>
-
-                <div className="mb-6 bg-blue-900 p-4 rounded border-2 border-blue-700">
-                  <p className="text-white text-lg font-pixel">
-                    ✓ Verify your identity
-                  </p>
-                  <p className="text-white text-lg font-pixel">
-                    ✓ Get permanent access
-                  </p>
-                  <p className="text-white text-lg font-pixel">
-                    ✓ Skip verification next time
-                  </p>
-                </div>
-
-                <div className="flex justify-center gap-4 mt-6">
-                  <button
-                    className="px-6 py-3 bg-gray-700 text-white text-lg font-pixel rounded border-2 border-gray-600 hover:bg-gray-600 transition"
-                    onClick={() => setShowEnsRegistration(false)}
-                    disabled={registrationStatus === "loading"}
+              {/* Add refresh button */}
+              <div className="mt-4 flex justify-center">
+                <button
+                  className="px-4 py-2 bg-blue-600 text-white text-base font-pixel rounded border-2 border-blue-700 hover:bg-blue-500 flex items-center"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    fetchUserSubdomain();
+                    setStatusMessage("Refreshing subdomain data...");
+                    setTimeout(() => {
+                      setStatusMessage(
+                        userSubdomain
+                          ? `Found subdomain: ${userSubdomain}.frenguin.eth`
+                          : "No subdomain found for this address"
+                      );
+                    }, 1500);
+                  }}
+                >
+                  <svg
+                    className="w-4 h-4 mr-2"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                    xmlns="http://www.w3.org/2000/svg"
                   >
-                    Cancel
-                  </button>
-                  <button
-                    className={`px-6 py-3 bg-blue-600 text-white text-lg font-pixel rounded border-2 border-blue-500 hover:bg-blue-500 transition flex items-center justify-center ${
-                      registrationStatus === "loading"
-                        ? "opacity-70 cursor-not-allowed"
-                        : ""
-                    }`}
-                    onClick={handleRegisterSubdomain}
-                    disabled={registrationStatus === "loading"}
-                  >
-                    {registrationStatus === "loading" ? (
-                      <>
-                        <svg
-                          className="animate-spin -ml-1 mr-3 h-5 w-5 text-white"
-                          xmlns="http://www.w3.org/2000/svg"
-                          fill="none"
-                          viewBox="0 0 24 24"
-                        >
-                          <circle
-                            className="opacity-25"
-                            cx="12"
-                            cy="12"
-                            r="10"
-                            stroke="currentColor"
-                            strokeWidth="4"
-                          ></circle>
-                          <path
-                            className="opacity-75"
-                            fill="currentColor"
-                            d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                          ></path>
-                        </svg>
-                        Processing...
-                      </>
-                    ) : (
-                      "Register Subdomain"
-                    )}
-                  </button>
-                </div>
-              </>
-            )}
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth="2"
+                      d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                    ></path>
+                  </svg>
+                  Refresh Name Data
+                </button>
+              </div>
+            </div>
+
+            <button
+              className="px-6 py-3 bg-gray-700 text-white text-lg font-pixel rounded border-2 border-gray-600 hover:bg-gray-600 transition"
+              onClick={() => setShowEnsRegistration(false)}
+            >
+              Close
+            </button>
           </div>
         </div>
       )}
+
+      {/* Speech Bubble - Removed to fix flickering issue */}
+      {/* We're now only using the in-game speech bubbles */}
     </div>
   );
 }

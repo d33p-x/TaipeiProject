@@ -344,24 +344,7 @@ export default function Home() {
       )}
 
       {/* Room Status with instructions (only when in game) */}
-      {address && isAdult !== null && selectedCharacter && (
-        <div className="absolute top-16 right-4 z-10 text-white px-4 py-2 rounded-lg shadow-lg border-2 border-yellow-600 bg-opacity-50 bg-yellow-900">
-          <div className="font-medium font-pixel">
-            {currentRoom === "general"
-              ? "General Room"
-              : currentRoom === "adults-only"
-              ? "Adults Only (18+)"
-              : "Kids Only Room"}
-          </div>
-          <div className="text-xs text-gray-300 mt-1 font-pixel">
-            {currentRoom === "general"
-              ? "Walk to the red 18+ door or green Kids door"
-              : currentRoom === "adults-only"
-              ? "Walk to the blue Exit door to return"
-              : "Walk to the blue Exit door to return"}
-          </div>
-        </div>
-      )}
+      {/* Room information banner removed as requested */}
 
       {/* Chat (only when in game) */}
       <div className="absolute bottom-4 left-4 z-10">
