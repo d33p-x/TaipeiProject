@@ -7,8 +7,14 @@ interface ChatProps {
   room: string;
 }
 
+interface ChatMessage {
+  id: number;
+  sender: string;
+  message: string;
+}
+
 // Simple mock data for demo purposes
-const mockMessages = {
+const initialMockMessages = {
   general: [
     { id: 1, sender: "Club Bot", message: "Welcome to Club Frenguin!" },
     {
@@ -36,16 +42,26 @@ const mockMessages = {
   ],
 };
 
+// Store messages outside component to persist across room changes
+const roomMessages: Record<string, ChatMessage[]> = {
+  general: [...initialMockMessages.general],
+  "adults-only": [...initialMockMessages["adults-only"]],
+};
+
 export default function Chat({ room }: ChatProps) {
   const { address } = useAccount();
-  const [messages, setMessages] = useState(
-    mockMessages[room as keyof typeof mockMessages] || []
+  const [messages, setMessages] = useState<ChatMessage[]>(
+    roomMessages[room] || []
   );
   const [newMessage, setNewMessage] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const [lastSpeechBubbleId, setLastSpeechBubbleId] = useState<number | null>(
-    null
-  );
+
+  // Update local state when room changes
+  useEffect(() => {
+    console.log(`Room changed to: ${room}`);
+    console.log(`Messages for this room:`, roomMessages[room]);
+    setMessages(roomMessages[room] || []);
+  }, [room]);
 
   // Auto-scroll chat to bottom when new messages arrive
   useEffect(() => {
@@ -62,13 +78,10 @@ export default function Chat({ room }: ChatProps) {
       message: newMessage.trim(),
     };
 
-    setMessages([...messages, newMsg]);
+    // Update both the local state and the persistent store
+    roomMessages[room] = [...roomMessages[room], newMsg];
+    setMessages(roomMessages[room]);
     setNewMessage("");
-
-    // Set this message to be displayed as a speech bubble
-    setLastSpeechBubbleId(newMsg.id);
-
-    console.log("Dispatching chat event with message:", newMessage.trim());
 
     try {
       // Dispatch a direct chat message event for the Phaser scene
@@ -94,18 +107,6 @@ export default function Chat({ room }: ChatProps) {
         bubbles: true,
       });
       window.dispatchEvent(chatEvent);
-
-      // Method 2: Using document.createEvent (for older browsers)
-      const backupEvent = document.createEvent("CustomEvent");
-      backupEvent.initCustomEvent("chat_message_backup", true, true, {
-        message: newMessage.trim(),
-        room,
-        sender: `${address.slice(0, 6)}...${address.slice(-4)}`,
-        id: newMsg.id,
-      });
-      window.dispatchEvent(backupEvent);
-
-      console.log("Chat events dispatched successfully");
     } catch (error) {
       console.error("Error dispatching chat event:", error);
     }

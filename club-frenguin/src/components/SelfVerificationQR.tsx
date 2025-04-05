@@ -32,16 +32,16 @@ export default function SelfVerificationQR() {
   }
 
   return (
-    <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50 z-50">
-      <div className="bg-white p-6 rounded-lg shadow-lg max-w-md w-full">
-        <h2 className="text-xl font-bold mb-4 text-center">
-          Age Verification Required
+    <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-70 backdrop-blur-sm z-50">
+      <div className="bg-black bg-opacity-90 p-8 rounded-xl shadow-2xl border-4 border-purple-600 max-w-md w-full">
+        <h2 className="text-2xl font-bold mb-4 text-center text-purple-400">
+          Scan QR Code to Verify Age
         </h2>
-        <p className="mb-4 text-center">
-          Scan this QR code with the Self app to verify your age. You must be
-          18+ to access restricted areas.
+        <p className="mb-6 text-center text-white">
+          Use the Self app to scan this QR code. You must be 18+ to access all
+          areas of Club Frenguin.
         </p>
-        <div className="flex justify-center">
+        <div className="flex justify-center bg-white p-4 rounded-lg">
           <SelfQRcodeWrapper
             selfApp={selfApp}
             onSuccess={() => {
@@ -49,6 +49,17 @@ export default function SelfVerificationQR() {
             }}
           />
         </div>
+        <p className="mt-4 text-center text-gray-400 text-sm">
+          Don't have the Self app?{" "}
+          <a
+            href="https://www.joinself.com/"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-purple-400 hover:underline"
+          >
+            Download here
+          </a>
+        </p>
       </div>
     </div>
   );

@@ -7,16 +7,25 @@ import GameWorld from "@/components/GameWorld";
 import Chat from "@/components/Chat";
 import SelfVerificationQR from "@/components/SelfVerificationQR";
 import { useState, useEffect } from "react";
+import { useConnect } from "wagmi";
+import { injected } from "wagmi/connectors";
+import Image from "next/image";
 
 export default function Home() {
   const { address } = useAccount();
+  const { connect } = useConnect();
   const { isAdult, isVerifying, startVerification } = useAgeVerification();
   const [currentRoom, setCurrentRoom] = useState<string>("general");
+  const [showingWelcome, setShowingWelcome] = useState(true);
+
+  // Connect wallet function
+  const handleConnectWallet = () => {
+    connect({ connector: injected() });
+    setShowingWelcome(false);
+  };
 
   // Sync currentRoom with GameWorld
   useEffect(() => {
-    // This would be implemented with proper state management in a real app
-    // For the MLP, we'll just use a mock implementation
     const handleRoomChange = (e: MessageEvent) => {
       if (e.data && e.data.type === "ROOM_CHANGE") {
         setCurrentRoom(e.data.room);
@@ -36,29 +45,22 @@ export default function Home() {
   }, []);
 
   return (
-    <main className="h-screen overflow-hidden relative bg-gradient-to-b from-blue-50 to-indigo-100">
-      {/* Game World - Full Screen */}
+    <main className="h-screen overflow-hidden relative">
+      {/* Game World Background - Always visible */}
       <div className="w-full h-full">
-        {address && isAdult !== null && <GameWorld />}
+        {/* Game world is always rendered but inactive until connected */}
+        <div className="absolute inset-0 z-0">
+          <Image
+            src="/assets/grass.png"
+            alt="Garden Background"
+            fill
+            style={{ objectFit: "cover" }}
+            priority
+          />
+        </div>
 
-        {address && isAdult === null && (
-          <div className="flex flex-col items-center justify-center min-h-screen">
-            <div className="bg-white bg-opacity-90 p-6 rounded-lg shadow-lg text-center max-w-md">
-              <h2 className="text-2xl font-bold mb-4 text-blue-600">
-                Age Verification Required
-              </h2>
-              <p className="mb-6 text-gray-700">
-                To enter the Club Frenguin world, please verify your age first.
-              </p>
-              <button
-                onClick={() => startVerification && startVerification()}
-                className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-6 rounded-full shadow-md transition duration-300 ease-in-out transform hover:scale-105"
-              >
-                Verify My Age Now
-              </button>
-            </div>
-          </div>
-        )}
+        {/* Active Game World (only when connected and verified) */}
+        {address && isAdult !== null && <GameWorld />}
       </div>
 
       {/* Header */}
@@ -69,50 +71,74 @@ export default function Home() {
         </p>
       </div>
 
-      {/* Minimal verification indicator */}
+      {/* Welcome Screen (when not connected) */}
+      {!address && (
+        <div className="absolute inset-0 flex items-center justify-center z-20">
+          <div className="bg-black bg-opacity-80 p-8 rounded-xl shadow-2xl border-4 border-yellow-600 max-w-md w-full text-center transform transition-all">
+            <h2 className="text-3xl font-bold mb-6 text-yellow-400">
+              Welcome to Club Frenguin
+            </h2>
+            <p className="mb-8 text-white text-lg">
+              Connect your wallet to enter this fun age-verified virtual world!
+            </p>
+            <button
+              onClick={handleConnectWallet}
+              className="relative px-8 py-4 bg-gradient-to-r from-green-500 to-green-700 text-white text-lg font-bold rounded-xl shadow-lg border-2 border-green-800 transform transition-transform hover:scale-105 hover:shadow-xl"
+            >
+              <span className="relative z-10">Connect Wallet</span>
+              <span className="absolute inset-0 bg-white opacity-10 rounded-lg"></span>
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Age Verification Screen */}
+      {address && isAdult === null && !isVerifying && (
+        <div className="absolute inset-0 flex items-center justify-center z-20">
+          <div className="bg-black bg-opacity-80 p-8 rounded-xl shadow-2xl border-4 border-blue-600 max-w-md w-full text-center">
+            <h2 className="text-3xl font-bold mb-4 text-blue-400">
+              Age Verification Required
+            </h2>
+            <p className="mb-6 text-white text-lg">
+              To access all areas of Club Frenguin, please verify your age using
+              Self Protocol.
+            </p>
+            <button
+              onClick={() => startVerification && startVerification()}
+              className="relative px-8 py-4 bg-gradient-to-r from-blue-500 to-blue-700 text-white text-lg font-bold rounded-xl shadow-lg border-2 border-blue-800 transform transition-transform hover:scale-105 hover:shadow-xl"
+            >
+              <span className="relative z-10">Verify My Age</span>
+              <span className="absolute inset-0 bg-white opacity-10 rounded-lg"></span>
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Verification indicator */}
       {address && isAdult && (
         <div className="absolute top-3 left-3 z-20">
-          <div className="flex items-center bg-green-500 bg-opacity-70 text-white text-xs px-1.5 py-0.5 rounded-full">
-            <span className="mr-1">✓</span>
-            <span>Verified</span>
+          <div className="flex items-center bg-green-500 bg-opacity-70 text-white px-2 py-1 rounded-full shadow-md">
+            <span className="mr-1 text-lg">✓</span>
+            <span className="font-medium">Age Verified</span>
           </div>
         </div>
       )}
 
-      {/* Wallet Connect (only when not connected) */}
-      {!address && (
-        <div className="absolute top-20 left-4 z-10">
-          <div className="bg-black bg-opacity-70 rounded-lg p-3 shadow-lg">
-            <WalletConnect />
+      {/* Room Status with instructions (only when in game) */}
+      {address && isAdult !== null && (
+        <div className="absolute top-16 right-4 z-10 bg-black bg-opacity-70 text-white px-4 py-2 rounded-lg shadow-lg border-2 border-yellow-600">
+          <div className="font-medium">
+            {currentRoom === "general" ? "General Room" : "Adults Only (18+)"}
+          </div>
+          <div className="text-xs text-gray-300 mt-1">
+            {currentRoom === "general"
+              ? "Walk to the red 18+ door to change rooms"
+              : "Walk to the blue Exit door to return"}
           </div>
         </div>
       )}
 
-      {/* Age verification button (only when needed) */}
-      {address && isAdult === null && (
-        <div className="absolute top-16 left-0 right-0 z-10 flex justify-center">
-          <button
-            onClick={() => startVerification && startVerification()}
-            className="bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold px-4 py-2 rounded-full shadow-md"
-          >
-            Verify Age to Enter Adult Areas
-          </button>
-        </div>
-      )}
-
-      {/* Room Status with instructions */}
-      <div className="absolute top-16 right-4 z-10 bg-black bg-opacity-70 text-white px-4 py-2 rounded-lg shadow-lg">
-        <div className="font-medium">
-          {currentRoom === "general" ? "General Room" : "Adults Only (18+)"}
-        </div>
-        <div className="text-xs text-gray-300 mt-1">
-          {currentRoom === "general"
-            ? "Walk to the red 18+ door to change rooms"
-            : "Walk to the blue Exit door to return"}
-        </div>
-      </div>
-
-      {/* WoW-style Chat in bottom left */}
+      {/* Chat (only when in game) */}
       <div className="absolute bottom-4 left-4 z-10">
         {address && isAdult !== null && (
           <Chat room={currentRoom === "general" ? "general" : "adults-only"} />

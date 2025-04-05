@@ -171,18 +171,15 @@ export default function GameWorld() {
             scene.generalObjects.push(generalRoomLabel);
 
             // Add door to adult room visual (no longer interactive)
-            const adultRoomDoor = this.add.rectangle(
-              width - 70,
-              height / 2,
-              70,
-              140,
-              0xaa0000
-            );
+            const adultRoomDoor = this.add
+              .image(width - 70, height / 2, "door")
+              .setDisplaySize(70, 140)
+              .setTint(0xaa0000); // Keep the red tint to distinguish it
             generalWorld.add(adultRoomDoor);
             scene.generalObjects.push(adultRoomDoor);
 
             // Add invisible door zone that will detect player proximity
-            scene.doorZone = this.add.zone(width - 100, height / 2, 150, 200);
+            scene.doorZone = this.add.zone(width - 100, height / 2, 200, 250);
             scene.doorZone.setOrigin(0.5);
 
             // Add visual instructions
@@ -233,18 +230,15 @@ export default function GameWorld() {
             scene.adultObjects.push(adultRoomLabel);
 
             // Add door back to general room visual (no longer interactive)
-            const backToDoor = this.add.rectangle(
-              70,
-              height / 2,
-              70,
-              140,
-              0x0000aa
-            );
+            const backToDoor = this.add
+              .image(70, height / 2, "door")
+              .setDisplaySize(70, 140)
+              .setTint(0x0000aa); // Keep the blue tint
             adultWorld.add(backToDoor);
             scene.adultObjects.push(backToDoor);
 
             // Add invisible exit zone that will detect player proximity
-            scene.exitZone = this.add.zone(100, height / 2, 150, 200);
+            scene.exitZone = this.add.zone(100, height / 2, 200, 250);
             scene.exitZone.setOrigin(0.5);
 
             // Add visual instructions
@@ -382,6 +376,12 @@ export default function GameWorld() {
               // Update current room
               scene.currentRoom = "adult";
               setCurrentRoom("adults-only");
+
+              // Notify the application about room change (for parent components)
+              window.postMessage(
+                { type: "ROOM_CHANGE", room: "adults-only" },
+                "*"
+              );
             } else if (
               roomName === "general" &&
               scene.currentRoom !== "general"
@@ -398,6 +398,9 @@ export default function GameWorld() {
               // Update current room
               scene.currentRoom = "general";
               setCurrentRoom("general");
+
+              // Notify the application about room change (for parent components)
+              window.postMessage({ type: "ROOM_CHANGE", room: "general" }, "*");
             }
           }
 
@@ -413,6 +416,10 @@ export default function GameWorld() {
             // Handle player movement
             const speed = 3;
             let moved = false;
+
+            // Store previous position before movement
+            const prevX = scene.playerSprite.x;
+            const prevY = scene.playerSprite.y;
 
             if (scene.cursors.left.isDown) {
               scene.playerSprite.x -= speed;
@@ -453,6 +460,15 @@ export default function GameWorld() {
               setPlayerPosition({ x: screenX, y: screenY });
             }
 
+            // Simple screen boundaries
+            const margin = 50;
+            if (scene.playerSprite.x < margin) scene.playerSprite.x = margin;
+            if (scene.playerSprite.x > width - margin)
+              scene.playerSprite.x = width - margin;
+            if (scene.playerSprite.y < margin) scene.playerSprite.y = margin;
+            if (scene.playerSprite.y > height - margin)
+              scene.playerSprite.y = height - margin;
+
             // Check if player is near the door or exit
             if (scene.doorZone && scene.currentRoom === "general") {
               const bounds = scene.doorZone.getBounds();
@@ -462,27 +478,17 @@ export default function GameWorld() {
                 scene.playerSprite.y
               );
 
-              // If player enters door zone and wasn't already in it
-              if (playerInDoorZone && !scene.nearDoor) {
-                scene.nearDoor = true;
+              // If player enters door zone
+              if (playerInDoorZone) {
                 // Check if player can access adult room
-                if (scene.isAdult !== true) {
-                  // Show a notification
-                  if (!this.registry.get("adultsOnlyMessageShown")) {
-                    alert(
-                      "Adults Only! You need to verify your age to enter this room."
-                    );
-                    this.registry.set("adultsOnlyMessageShown", true);
+                if (scene.isAdult === true) {
+                  // Switch to adult room automatically without popup
+                  if (!scene.nearDoor) {
+                    scene.nearDoor = true;
+                    this.switchRoom("adult");
                   }
-                } else {
-                  // Switch to adult room automatically
-                  this.switchRoom("adult");
-                  // If entering adult room, show token reward notification
-                  alert(
-                    "🎉 You earned 5 FRENG tokens for entering the adults-only lounge!"
-                  );
                 }
-              } else if (!playerInDoorZone && scene.nearDoor) {
+              } else {
                 scene.nearDoor = false;
               }
             }
@@ -496,24 +502,17 @@ export default function GameWorld() {
                 scene.playerSprite.y
               );
 
-              // If player enters exit zone and wasn't already in it
-              if (playerInExitZone && !scene.nearExit) {
-                scene.nearExit = true;
+              // If player enters exit zone
+              if (playerInExitZone) {
                 // Switch back to general room automatically
-                this.switchRoom("general");
-              } else if (!playerInExitZone && scene.nearExit) {
+                if (!scene.nearExit) {
+                  scene.nearExit = true;
+                  this.switchRoom("general");
+                }
+              } else {
                 scene.nearExit = false;
               }
             }
-
-            // Add boundaries to keep player in the room
-            const margin = 50;
-            if (scene.playerSprite.x < margin) scene.playerSprite.x = margin;
-            if (scene.playerSprite.x > width - margin)
-              scene.playerSprite.x = width - margin;
-            if (scene.playerSprite.y < margin) scene.playerSprite.y = margin;
-            if (scene.playerSprite.y > height - margin)
-              scene.playerSprite.y = height - margin;
           }
         }
 
