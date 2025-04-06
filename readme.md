@@ -94,3 +94,4 @@ It's like Club Penguin meets ZK identity — but safer, permissionless, and onch
 * ENS enhance persistence
 * Expands the idea of identity as access — without KYC or surveillance
 
+NOTE: this is a work in progress. Multiplayer is currently not fucntional.
