@@ -9,7 +9,6 @@ import {
 import { SpeechBubble } from "./Chat";
 import { ethers } from "ethers";
 import { v4 as uuidv4 } from "uuid";
-import TestPlayer from "./TestPlayer"; // Import the TestPlayer component
 
 // Define game types
 type GameScene = Phaser.Scene & {
@@ -102,17 +101,6 @@ export default function GameWorld() {
   // Contract addresses
   const registryAddress = "0x257ed5b68c2a32273db8490e744028a63acc771f";
   const registrarAddress = "0x38Fc7Af48B92F00AB5508d88648FF9a4C9D89b5E";
-
-  // Add debug state to toggle visibility
-  const [showDebug, setShowDebug] = useState(false);
-
-  // Add state to toggle showing all users regardless of room
-  const [showAllUsers, setShowAllUsers] = useState(false);
-
-  // State to store all users from all rooms
-  const [allRoomUsers, setAllRoomUsers] = useState<
-    Array<{ id: string; room: string }>
-  >([]);
 
   // Add state for other players
   const [otherPlayers, setOtherPlayers] = useState<
@@ -287,26 +275,8 @@ export default function GameWorld() {
 
               // Add new players
               data.users.forEach((user: any) => {
-                // Make sure we're comparing the same room format - FIX THE COMPARISON LOGIC
-                // NEW CODE: Display all users regardless of room in debug mode
-                const userIsInSameRoom =
-                  showDebug && showAllUsers
-                    ? true // Show all users if debug mode has "show all users" enabled
-                    : normalizeRoomName(user.room) ===
-                      normalizeRoomName(currentGameRoom);
-
-                // Improved logging to debug room mismatches
-                console.log(
-                  `User ${user.id.substring(0, 8)} room: ${
-                    user.room
-                  }, normalized: ${normalizeRoomName(user.room)}`
-                );
-                console.log(
-                  `My room: ${currentGameRoom}, normalized: ${normalizeRoomName(
-                    currentGameRoom
-                  )}`
-                );
-                console.log(`Match? ${userIsInSameRoom}`);
+                // Make sure we're comparing the same room format
+                const userIsInSameRoom = user.room === currentGameRoom;
 
                 if (user.id !== playerId && userIsInSameRoom) {
                   console.log(
@@ -316,24 +286,19 @@ export default function GameWorld() {
                     )} at position (${user.position.x}, ${user.position.y})`
                   );
 
-                  // Force specific position for testing visibility
+                  // Create sprite for the other player
                   const otherSprite = scene.add.sprite(
-                    400, // Force X to center for testing
-                    300, // Force Y to center for testing
+                    user.position.x,
+                    user.position.y,
                     user.character || "playerMale"
                   );
 
-                  // Make sure sprite is visible with high z-index
-                  otherSprite.setDepth(100);
-                  otherSprite.setScale(1.2); // Make it bigger for testing
-                  otherSprite.setTint(0xff0000); // Make it red for testing
-
-                  // Rest of the sprite and label creation...
+                  // Create label for the other player
                   const otherLabel = scene.add
                     .text(
-                      otherSprite.x,
-                      otherSprite.y + 40,
-                      user.id.substring(0, 8) + " (OTHER PLAYER)",
+                      user.position.x,
+                      user.position.y + 40,
+                      user.id.substring(0, 8),
                       {
                         fontFamily: "Pixelify Sans",
                         fontSize: "14px",
@@ -344,9 +309,6 @@ export default function GameWorld() {
                       }
                     )
                     .setOrigin(0.5);
-
-                  // Set high depth to make sure it's visible
-                  otherLabel.setDepth(100);
 
                   // Add to the otherPlayers map
                   scene.otherPlayers?.set(user.id, {
@@ -395,8 +357,8 @@ export default function GameWorld() {
                         .setOrigin(0.5);
 
                       const container = scene.add.container(
-                        otherSprite.x,
-                        otherSprite.y - 100
+                        user.position.x,
+                        user.position.y - 100
                       );
                       container.name = `speechBubble_${user.id}`;
                       container.add([bubble, message]);
@@ -1797,6 +1759,17 @@ export default function GameWorld() {
     }
   }, [ensNameOverride]);
 
+  // Add debug state to toggle visibility
+  const [showDebug, setShowDebug] = useState(false);
+
+  // Add state to toggle showing all users regardless of room
+  const [showAllUsers, setShowAllUsers] = useState(false);
+
+  // State to store all users from all rooms
+  const [allRoomUsers, setAllRoomUsers] = useState<
+    Array<{ id: string; room: string }>
+  >([]);
+
   // Add useEffect to fetch all users regardless of room for debugging
   useEffect(() => {
     if (!showDebug || !playerId) return;
@@ -1830,7 +1803,6 @@ export default function GameWorld() {
   return (
     <div className="w-full h-full absolute inset-0 overflow-hidden">
       <div ref={gameRef} className="w-full h-full" />
-      <TestPlayer gameInstance={gameInstanceRef.current} />
 
       {/* Debug overlay toggle button */}
       <button
@@ -1956,58 +1928,6 @@ export default function GameWorld() {
               Force Room Change
             </button>
           </div>
-
-          {/* Add Force Visible Player button */}
-          <button
-            className="mt-4 bg-purple-600 text-white px-2 py-1 rounded text-xs w-full"
-            onClick={() => {
-              // Add a test player directly using the game instance
-              if (gameInstanceRef.current) {
-                const scene = gameInstanceRef.current.scene.getScene(
-                  "MainScene"
-                ) as GameScene;
-                if (!scene) return;
-
-                // Clean up previous test players
-                scene.children.list.forEach((child: any) => {
-                  if (
-                    child.name === "testPlayer" ||
-                    child.name === "testPlayerLabel"
-                  ) {
-                    child.destroy();
-                  }
-                });
-
-                // Create new test player
-                const testPlayer = scene.add.sprite(400, 300, "playerMale");
-                testPlayer.setDepth(999);
-                testPlayer.setScale(1.5);
-                testPlayer.setTint(0xff0000);
-                testPlayer.name = "testPlayer";
-
-                // Add label
-                const label = scene.add
-                  .text(400, 340, "FORCED TEST PLAYER", {
-                    fontFamily: "Pixelify Sans",
-                    fontSize: "14px",
-                    color: "#FFFFFF",
-                    padding: { x: 3, y: 2 },
-                    stroke: "#000000",
-                    strokeThickness: 3,
-                  })
-                  .setOrigin(0.5);
-                label.setDepth(999);
-                label.name = "testPlayerLabel";
-
-                // Show feedback
-                scene.showAccessDeniedMessage?.(
-                  "Added a forced test player sprite"
-                );
-              }
-            }}
-          >
-            Force Visible Player
-          </button>
         </div>
       )}
 
